@@ -1,6 +1,6 @@
 import pytest
 
-from diceydice.evaluate import DiceRoller
+from diceydice.evaluate import DiceResult, DiceRoller, DiceSelector, DieResult
 from diceydice.parser import Dice, tokenize
 
 
@@ -57,7 +57,7 @@ def test_evaluate_group_illegal_nested_group():
 @pytest.fixture
 def dice_result(request):
     tokens = tokenize(request.param)
-    return roller().evaluate_group(tokens)
+    return roller().evaluate(tokens)
 
 
 @pytest.mark.parametrize(
@@ -66,6 +66,11 @@ def dice_result(request):
         ('1d6', 6),
         ('2d20', 40),
         ('1d20 + 2d4', 28),
+        ('1d20 + (1d2 + 1d4 + 1d6)', 32),
+
+        # Postfix operators
+        ('2d20 h1', 20),
+        ('1d20 + (1d2 + 1d4 + 1d6)kh1', 26),
     ],
     indirect=['dice_result'],
 )
@@ -74,7 +79,31 @@ def test_dice_result_value(dice_result, expected_value):
     assert result == expected_value
 
 
-def test_evaluate_parens():
-    tokens = tokenize('1d20 + (1d2 + 1d4 + 1d6)')
-    result = roller().evaluate(tokens)
-    assert len(result) == 4
+@pytest.mark.parametrize(
+    'roll_results,selector,expected_value',
+    [
+        (
+            [DieResult(2, 2), DieResult(1, 4), DieResult(1, 6)],
+            DiceSelector.highest(),
+            2,
+        ),
+        (
+            [DieResult(2, 2), DieResult(3, 4), DieResult(1, 6)],
+            DiceSelector.highest(2),
+            5,
+        ),
+        (
+            [DieResult(2, 2), DieResult(1, 4), DieResult(5, 6)],
+            DiceSelector.lowest(),
+            1,
+        ),
+        (
+            [DieResult(2, 2), DieResult(1, 4), DieResult(5, 6)],
+            DiceSelector.lowest(2),
+            3,
+        ),
+    ],
+)
+def test_dice_result_select(roll_results, selector, expected_value):
+    results = DiceResult(roll_results).select(selector)
+    assert results.value() == expected_value
