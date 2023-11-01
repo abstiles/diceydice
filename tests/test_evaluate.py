@@ -1,6 +1,6 @@
 import pytest
 
-from diceydice.evaluate import DiceResult, DiceRoller, DiceSelector, DieResult
+from diceydice.evaluate import DiceResult, DiceRoller, DiceSelector
 from diceydice.parser import Dice, tokenize
 
 
@@ -82,26 +82,10 @@ def test_dice_result_value(dice_result, expected_value):
 @pytest.mark.parametrize(
     'roll_results,selector,expected_value',
     [
-        (
-            [DieResult(2, 2), DieResult(1, 4), DieResult(1, 6)],
-            DiceSelector.highest(),
-            2,
-        ),
-        (
-            [DieResult(2, 2), DieResult(3, 4), DieResult(1, 6)],
-            DiceSelector.highest(2),
-            5,
-        ),
-        (
-            [DieResult(2, 2), DieResult(1, 4), DieResult(5, 6)],
-            DiceSelector.lowest(),
-            1,
-        ),
-        (
-            [DieResult(2, 2), DieResult(1, 4), DieResult(5, 6)],
-            DiceSelector.lowest(2),
-            3,
-        ),
+        ([2, 1, 1], DiceSelector.highest(), 2),
+        ([2, 3, 1], DiceSelector.highest(2), 5),
+        ([2, 1, 5], DiceSelector.lowest(), 1),
+        ([2, 1, 5], DiceSelector.lowest(2), 3),
     ],
 )
 def test_dice_result_select(roll_results, selector, expected_value):

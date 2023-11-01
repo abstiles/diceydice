@@ -8,20 +8,20 @@ from typing_extensions import TypeAlias
 from .parser import Dice, KeepHighest, KeepLowest, PostfixOperator, Token
 
 ParseNode: TypeAlias = Union[Token, 'DiceResult']
-Selector: TypeAlias = Callable[[Iterable['DieResult']], list['DieResult']]
+Selector: TypeAlias = Callable[[Iterable[int]], list[int]]
 
 
 class DiceSelector:
     @staticmethod
     def highest(count: int = 1) -> Selector:
-        def selector(rolls: Iterable[DieResult]) -> list[DieResult]:
-            return nlargest(count, rolls, key=DieResult.value)
+        def selector(rolls: Iterable[int]) -> list[int]:
+            return nlargest(count, rolls)
         return selector
 
     @staticmethod
     def lowest(count: int = 1) -> Selector:
-        def selector(rolls: Iterable[DieResult]) -> list[DieResult]:
-            return nsmallest(count, rolls, key=DieResult.value)
+        def selector(rolls: Iterable[int]) -> list[int]:
+            return nsmallest(count, rolls)
         return selector
 
     @staticmethod
@@ -29,25 +29,9 @@ class DiceSelector:
         return list
 
 
-class DieResult:
-    def __init__(self, result: int, sides: int):
-        self.result = result
-        self.sides = sides
-
-    def __str__(self) -> str:
-        return f'd{self.sides}({self.result})'
-
-    def __repr__(self) -> str:
-        return f'DieResult({self.result}, {self.sides})'
-
-    @staticmethod
-    def value(die_result: "DieResult") -> int:
-        return die_result.result
-
-
 class DiceResult:
     def __init__(
-            self, dice: Iterable[DieResult],
+            self, dice: Iterable[int],
             selector: Selector = DiceSelector.all()
     ):
         self.dice = list(dice)
@@ -78,20 +62,19 @@ class DiceResult:
             return self
         return DiceResult(list(self) + list(other))
 
-    def __iter__(self) -> Iterator[DieResult]:
+    def __iter__(self) -> Iterator[int]:
         return iter(self.selector(self.dice))
 
     def value(self) -> int:
-        return sum(die.result for die in self.selector(self.dice))
+        return sum(self.selector(self.dice))
 
 
 class DiceRoller:
     def __init__(self, rng: Callable[[int], int]):
         self.rng = rng
 
-    def roll(self, sides: int) -> DieResult:
-        result = self.rng(sides)
-        return DieResult(result, sides)
+    def roll(self, sides: int) -> int:
+        return self.rng(sides)
 
     def evaluate(self, tokens: Iterable[Token]) -> DiceResult:
         context: list[ParseNode] = []
