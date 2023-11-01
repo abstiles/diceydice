@@ -9,7 +9,7 @@ from .parser import tokenize
 
 def eval_expr(expr: str) -> None:
     result = evaluate(tokenize(expr))
-    print(f'{result.value()} <= [{result}]')
+    print(f'{result.value()} <= {result}')
 
 
 def completion(text: str, state: int) -> Optional[str]:

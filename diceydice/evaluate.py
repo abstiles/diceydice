@@ -37,20 +37,17 @@ class DiceResult:
         self.dice = list(dice)
         self.selector = selector
 
-    def highest(self, count: int) -> "DiceResult":
-        return self.select(DiceSelector.highest(count))
+    def highest(self, count: int = 1) -> "DiceResult":
+        return HighestDice(self.dice, count)
 
-    def lowest(self, count: int) -> "DiceResult":
-        return self.select(DiceSelector.lowest(count))
-
-    def select(self, selector: Selector) -> "DiceResult":
-        return DiceResult(self.dice, selector)
+    def lowest(self, count: int = 1) -> "DiceResult":
+        return LowestDice(self.dice, count)
 
     def __len__(self) -> int:
         return len(self.dice)
 
     def __str__(self) -> str:
-        return ' + '.join(map(str, self.dice))
+        return '(' + ' + '.join(map(str, self.dice)) + ')'
 
     def __repr__(self) -> str:
         return f'DiceResult({self.dice!r})({self.selector(self.dice)})'
@@ -67,6 +64,40 @@ class DiceResult:
 
     def value(self) -> int:
         return sum(self.selector(self.dice))
+
+
+class HighestDice(DiceResult):
+    def __init__(self, dice: Iterable[int], count: int):
+        super().__init__(dice)
+        self.count = count
+        self.selector = DiceSelector.highest(count)
+
+    def __str__(self) -> str:
+        dice = ', '.join(map(str, self.dice))
+        if self.count == 1:
+            return f'highest({dice})'
+        kept = ' + '.join(map(str, self))
+        return f'({kept}) <= high[{self.count}]({dice})'
+
+    def __repr__(self) -> str:
+        return f'HighestDice({self.dice!r}, {self.count})'
+
+
+class LowestDice(DiceResult):
+    def __init__(self, dice: Iterable[int], count: int):
+        super().__init__(dice)
+        self.count = count
+        self.selector = DiceSelector.lowest(count)
+
+    def __str__(self) -> str:
+        dice = ', '.join(map(str, self.dice))
+        if self.count == 1:
+            return f'lowest({dice})'
+        kept = ' + '.join(map(str, self))
+        return f'({kept}) <= low[{self.count}]({dice})'
+
+    def __repr__(self) -> str:
+        return f'LowestDice({self.dice!r}, {self.count})'
 
 
 class DiceRoller:

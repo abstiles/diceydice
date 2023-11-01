@@ -1,6 +1,6 @@
 import pytest
 
-from diceydice.evaluate import DiceResult, DiceRoller, DiceSelector
+from diceydice.evaluate import DiceResult, DiceRoller
 from diceydice.parser import Dice, tokenize
 
 
@@ -80,14 +80,24 @@ def test_dice_result_value(dice_result, expected_value):
 
 
 @pytest.mark.parametrize(
-    'roll_results,selector,expected_value',
+    'roll_results,count,expected_value',
     [
-        ([2, 1, 1], DiceSelector.highest(), 2),
-        ([2, 3, 1], DiceSelector.highest(2), 5),
-        ([2, 1, 5], DiceSelector.lowest(), 1),
-        ([2, 1, 5], DiceSelector.lowest(2), 3),
+        ([2, 1, 1], 1, 2),
+        ([2, 3, 1], 2, 5),
     ],
 )
-def test_dice_result_select(roll_results, selector, expected_value):
-    results = DiceResult(roll_results).select(selector)
+def test_dice_result_highest(roll_results, count, expected_value):
+    results = DiceResult(roll_results).highest(count)
+    assert results.value() == expected_value
+
+
+@pytest.mark.parametrize(
+    'roll_results,count,expected_value',
+    [
+        ([2, 1, 5], 1, 1),
+        ([2, 1, 5], 2, 3),
+    ],
+)
+def test_dice_result_lowest(roll_results, count, expected_value):
+    results = DiceResult(roll_results).lowest(count)
     assert results.value() == expected_value
