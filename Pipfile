@@ -1,0 +1,18 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+diceydice = {editable = true, path = "."}
+
+[dev-packages]
+pytest = "*"
+mypy = "*"
+flake8 = "*"
+pre-commit = "*"
+isort = "*"
+typing-extensions = "*"
+
+[requires]
+python_version = "3.9"
