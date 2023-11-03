@@ -3,7 +3,7 @@ import readline
 import sys
 from typing import Optional
 
-from .diceydice import eval_expr
+from .diceydice import eval_expr, ANSI
 
 def completion(text: str, state: int) -> Optional[str]:
     if state > 0:
@@ -43,7 +43,7 @@ def repr() -> None:
     readline.set_completer(completion)
     try:
         while 'exit' not in (line := input().lower()):
-            print(eval_expr(line))
+            print(eval_expr(line, ANSI))
     except (KeyboardInterrupt, EOFError):
         pass
 
