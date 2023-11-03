@@ -90,12 +90,8 @@ class DieRoll(DiceComputation):
 
 
 class DiceResult(DiceComputation):
-    def __init__(
-            self, dice: Iterable[DiceComputation],
-            selector: Selector = DiceSelector.all()
-    ):
+    def __init__(self, dice: Iterable[DiceComputation]):
         self.dice = list(dice)
-        self.selector = selector
 
     def highest(self, count: int = 1) -> "DiceResult":
         return HighestDice(self.dice, count)
@@ -132,78 +128,66 @@ class DiceResult(DiceComputation):
         return self + other
 
     def __iter__(self) -> Iterator[DiceComputation]:
+        return iter(self.dice)
+
+    def value(self) -> int:
+        roll_values = map(int, self.dice)
+        return sum(roll_values)
+
+
+class FilteredDice(DiceResult):
+    def __init__(
+            self, dice: Iterable[DiceComputation],
+            name: str, selector: Selector, count: int):
+        super().__init__(dice)
+        self.name = name
+        self.selector = selector
+        self.count = count
+
+    def __iter__(self) -> Iterator[DiceComputation]:
         return iter(self.selector(self.dice))
 
     def value(self) -> int:
         roll_values = map(int, self.selector(self.dice))
         return sum(roll_values)
 
-
-class HighestDice(DiceResult):
-    def __init__(self, dice: Iterable[DiceComputation], count: int):
-        super().__init__(dice)
-        self.count = count
-        self.selector = DiceSelector.highest(count)
-
     def __str__(self) -> str:
         dice = ', '.join(map(str, self.dice))
         if self.count == 1:
-            return f'highest({dice})'
-        kept = ' + '.join(map(str, self))
-        return f'({kept}) <= high[{self.count}]({dice})'
+            return f'{self.name}({dice})'
+        return f'{self.name}[{self.count}]({dice})'
+
+    def __add__(self, other: DiceComputation) -> DiceResult:
+        if isinstance(other, DiceResult):
+            if len(other) == 0:
+                return self
+            if len(self) == 0:
+                return other
+        return DiceResult([self, other])
+
+    def __radd__(self, other: DiceComputation) -> DiceResult:
+        if isinstance(other, DiceResult):
+            if len(other) == 0:
+                return self
+            if len(self) == 0:
+                return other
+        return DiceResult([other, self])
+
+
+class HighestDice(FilteredDice):
+    def __init__(self, dice: Iterable[DiceComputation], count: int):
+        super().__init__(dice, "high", DiceSelector.highest(count), count)
 
     def __repr__(self) -> str:
         return f'HighestDice({self.dice!r}, count={self.count})'
 
-    def __add__(self, other: DiceComputation) -> DiceResult:
-        if isinstance(other, DiceResult):
-            if len(other) == 0:
-                return self
-            if len(self) == 0:
-                return other
-        return DiceResult([self, other])
 
-    def __radd__(self, other: DiceComputation) -> DiceResult:
-        if isinstance(other, DiceResult):
-            if len(other) == 0:
-                return self
-            if len(self) == 0:
-                return other
-        return DiceResult([other, self])
-
-
-
-class LowestDice(DiceResult):
+class LowestDice(FilteredDice):
     def __init__(self, dice: Iterable[DiceComputation], count: int):
-        super().__init__(dice)
-        self.count = count
-        self.selector = DiceSelector.lowest(count)
-
-    def __str__(self) -> str:
-        dice = ', '.join(map(str, self.dice))
-        if self.count == 1:
-            return f'lowest({dice})'
-        kept = ' + '.join(map(str, self))
-        return f'({kept}) <= low[{self.count}]({dice})'
+        super().__init__(dice, "low", DiceSelector.lowest(count), count)
 
     def __repr__(self) -> str:
         return f'LowestDice({self.dice!r}, count={self.count})'
-
-    def __add__(self, other: DiceComputation) -> DiceResult:
-        if isinstance(other, DiceResult):
-            if len(other) == 0:
-                return self
-            if len(self) == 0:
-                return other
-        return DiceResult([self, other])
-
-    def __radd__(self, other: DiceComputation) -> DiceResult:
-        if isinstance(other, DiceResult):
-            if len(other) == 0:
-                return self
-            if len(self) == 0:
-                return other
-        return DiceResult([other, self])
 
 
 class DiceRoller:
