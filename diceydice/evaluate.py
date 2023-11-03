@@ -1,26 +1,26 @@
 from heapq import nlargest, nsmallest
 from itertools import repeat
 from random import randrange
-from typing import Callable, Iterable, Iterator, Union
+from typing import Callable, Iterable, Iterator, SupportsInt, Union
 
 from typing_extensions import TypeAlias
 
 from .parser import Dice, KeepHighest, KeepLowest, PostfixOperator, Token
 
 ParseNode: TypeAlias = Union[Token, 'DiceResult']
-Selector: TypeAlias = Callable[[Iterable[int]], list[int]]
+Selector: TypeAlias = Callable[[Iterable['DieRoll']], list['DieRoll']]
 
 
 class DiceSelector:
     @staticmethod
     def highest(count: int = 1) -> Selector:
-        def selector(rolls: Iterable[int]) -> list[int]:
+        def selector(rolls: Iterable[DieRoll]) -> list[DieRoll]:
             return nlargest(count, rolls)
         return selector
 
     @staticmethod
     def lowest(count: int = 1) -> Selector:
-        def selector(rolls: Iterable[int]) -> list[int]:
+        def selector(rolls: Iterable[DieRoll]) -> list[DieRoll]:
             return nsmallest(count, rolls)
         return selector
 
@@ -29,9 +29,56 @@ class DiceSelector:
         return list
 
 
+class DieRoll:
+    def __init__(self, sides: int, result: int):
+        self.sides = sides
+        self.result = result
+
+    @property
+    def is_crit(self) -> bool:
+        return self.sides == self.result
+
+    def __str__(self) -> str:
+        return str(int(self))
+
+    def __repr__(self) -> str:
+        return f'DieRoll(sides={self.sides}, result={self.result})'
+
+    def __int__(self) -> int:
+        return self.result
+
+    def __add__(self, other: object) -> int:
+        if not isinstance(other, SupportsInt):
+            return NotImplemented
+        return int(self) + int(other)
+
+    def __radd__(self, other: object) -> int:
+        return self + other
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, SupportsInt):
+            return NotImplemented
+        return int(self) < int(other)
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, SupportsInt):
+            return NotImplemented
+        return int(self) <= int(other)
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, SupportsInt):
+            return NotImplemented
+        return int(self) > int(other)
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, SupportsInt):
+            return NotImplemented
+        return int(self) >= int(other)
+
+
 class DiceResult:
     def __init__(
-            self, dice: Iterable[int],
+            self, dice: Iterable[DieRoll],
             selector: Selector = DiceSelector.all()
     ):
         self.dice = list(dice)
@@ -59,15 +106,16 @@ class DiceResult:
             return self
         return DiceResult(list(self) + list(other))
 
-    def __iter__(self) -> Iterator[int]:
+    def __iter__(self) -> Iterator[DieRoll]:
         return iter(self.selector(self.dice))
 
     def value(self) -> int:
-        return sum(self.selector(self.dice))
+        roll_values = map(int, self.selector(self.dice))
+        return sum(roll_values)
 
 
 class HighestDice(DiceResult):
-    def __init__(self, dice: Iterable[int], count: int):
+    def __init__(self, dice: Iterable[DieRoll], count: int):
         super().__init__(dice)
         self.count = count
         self.selector = DiceSelector.highest(count)
@@ -84,7 +132,7 @@ class HighestDice(DiceResult):
 
 
 class LowestDice(DiceResult):
-    def __init__(self, dice: Iterable[int], count: int):
+    def __init__(self, dice: Iterable[DieRoll], count: int):
         super().__init__(dice)
         self.count = count
         self.selector = DiceSelector.lowest(count)
@@ -104,8 +152,8 @@ class DiceRoller:
     def __init__(self, rng: Callable[[int], int]):
         self.rng = rng
 
-    def roll(self, sides: int) -> int:
-        return self.rng(sides)
+    def roll(self, sides: int) -> DieRoll:
+        return DieRoll(sides=sides, result=self.rng(sides))
 
     def evaluate(self, tokens: Iterable[Token]) -> DiceResult:
         context: list[ParseNode] = []
