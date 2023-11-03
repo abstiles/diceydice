@@ -1,6 +1,6 @@
 import pytest
 
-from diceydice.evaluate import DiceResult, DiceRoller
+from diceydice.evaluate import DiceResult, DiceRoller, DieRoll
 from diceydice.parser import Dice, tokenize
 
 
@@ -77,6 +77,19 @@ def dice_result(request):
 def test_dice_result_value(dice_result, expected_value):
     result = dice_result.value()
     assert result == expected_value
+
+
+def test_dice_result():
+    result = roller().evaluate(
+        tokenize('2d20 + (1d2 + 1d4) kh1')
+    )
+    expected = DiceResult(
+        [
+            DiceResult([DieRoll(20, 20), DieRoll(20, 20)]),
+            DiceResult([DieRoll(2, 2), DieRoll(4, 4)]).highest(),
+        ]
+    )
+    assert result == expected
 
 
 @pytest.mark.parametrize(

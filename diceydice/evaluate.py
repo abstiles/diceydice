@@ -7,20 +7,20 @@ from typing_extensions import TypeAlias
 
 from .parser import Dice, KeepHighest, KeepLowest, PostfixOperator, Token
 
-ParseNode: TypeAlias = Union[Token, 'DiceResult']
-Selector: TypeAlias = Callable[[Iterable['DieRoll']], list['DieRoll']]
+ParseNode: TypeAlias = Union[Token, 'DiceComputation']
+Selector: TypeAlias = Callable[[Iterable['DiceComputation']], list['DiceComputation']]
 
 
 class DiceSelector:
     @staticmethod
     def highest(count: int = 1) -> Selector:
-        def selector(rolls: Iterable[DieRoll]) -> list[DieRoll]:
+        def selector(rolls: Iterable[DiceComputation]) -> list[DiceComputation]:
             return nlargest(count, rolls)
         return selector
 
     @staticmethod
     def lowest(count: int = 1) -> Selector:
-        def selector(rolls: Iterable[DieRoll]) -> list[DieRoll]:
+        def selector(rolls: Iterable[DiceComputation]) -> list[DiceComputation]:
             return nsmallest(count, rolls)
         return selector
 
@@ -29,31 +29,12 @@ class DiceSelector:
         return list
 
 
-class DieRoll:
-    def __init__(self, sides: int, result: int):
-        self.sides = sides
-        self.result = result
-
-    @property
-    def is_crit(self) -> bool:
-        return self.sides == self.result
-
-    def __str__(self) -> str:
-        return str(int(self))
-
-    def __repr__(self) -> str:
-        return f'DieRoll(sides={self.sides}, result={self.result})'
+class DiceComputation:
+    def value(self) -> int:
+        return NotImplemented
 
     def __int__(self) -> int:
-        return self.result
-
-    def __add__(self, other: object) -> int:
-        if not isinstance(other, SupportsInt):
-            return NotImplemented
-        return int(self) + int(other)
-
-    def __radd__(self, other: object) -> int:
-        return self + other
+        return self.value()
 
     def __lt__(self, other: object) -> bool:
         if not isinstance(other, SupportsInt):
@@ -76,9 +57,41 @@ class DieRoll:
         return int(self) >= int(other)
 
 
-class DiceResult:
+class DieRoll(DiceComputation):
+    def __init__(self, sides: int, result: int):
+        self.sides = sides
+        self.result = result
+
+    @property
+    def is_crit(self) -> bool:
+        return self.sides == self.result
+
+    def value(self) -> int:
+        return self.result
+
+    def __str__(self) -> str:
+        return str(int(self))
+
+    def __repr__(self) -> str:
+        return f'DieRoll(sides={self.sides}, result={self.result})'
+
+    def __add__(self, other: object) -> int:
+        if not isinstance(other, SupportsInt):
+            return NotImplemented
+        return int(self) + int(other)
+
+    def __radd__(self, other: object) -> int:
+        return self + other
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DieRoll):
+            return False
+        return (self.sides, self.result) == (other.sides, other.result)
+
+
+class DiceResult(DiceComputation):
     def __init__(
-            self, dice: Iterable[DieRoll],
+            self, dice: Iterable[DiceComputation],
             selector: Selector = DiceSelector.all()
     ):
         self.dice = list(dice)
@@ -90,23 +103,35 @@ class DiceResult:
     def lowest(self, count: int = 1) -> "DiceResult":
         return LowestDice(self.dice, count)
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, self.__class__):
+            return False
+        return self.dice == other.dice
+
     def __len__(self) -> int:
         return len(self.dice)
 
     def __str__(self) -> str:
+        if len(self.dice) == 1:
+            return str(self.dice[0])
         return '(' + ' + '.join(map(str, self.dice)) + ')'
 
     def __repr__(self) -> str:
-        return f'DiceResult({self.dice!r})({self.selector(self.dice)})'
+        return f'DiceResult({self.dice!r})'
 
-    def __add__(self, other: 'DiceResult') -> 'DiceResult':
-        if len(self) == 0:
-            return other
-        if len(other) == 0:
-            return self
-        return DiceResult(list(self) + list(other))
+    def __add__(self, other: DiceComputation) -> 'DiceResult':
+        if isinstance(other, DiceResult):
+            # Don't create a new DiceResult group for trivial (0 or 1 dice)
+            # cases.
+            if len(self) <= 1 or len(other) <= 1:
+                return DiceResult(self.dice + other.dice)
+            return DiceResult([self, other])
+        return DiceResult(self.dice + [other])
 
-    def __iter__(self) -> Iterator[DieRoll]:
+    def __radd__(self, other: DiceComputation) -> 'DiceResult':
+        return self + other
+
+    def __iter__(self) -> Iterator[DiceComputation]:
         return iter(self.selector(self.dice))
 
     def value(self) -> int:
@@ -115,7 +140,7 @@ class DiceResult:
 
 
 class HighestDice(DiceResult):
-    def __init__(self, dice: Iterable[DieRoll], count: int):
+    def __init__(self, dice: Iterable[DiceComputation], count: int):
         super().__init__(dice)
         self.count = count
         self.selector = DiceSelector.highest(count)
@@ -128,11 +153,28 @@ class HighestDice(DiceResult):
         return f'({kept}) <= high[{self.count}]({dice})'
 
     def __repr__(self) -> str:
-        return f'HighestDice({self.dice!r}, {self.count})'
+        return f'HighestDice({self.dice!r}, count={self.count})'
+
+    def __add__(self, other: DiceComputation) -> DiceResult:
+        if isinstance(other, DiceResult):
+            if len(other) == 0:
+                return self
+            if len(self) == 0:
+                return other
+        return DiceResult([self, other])
+
+    def __radd__(self, other: DiceComputation) -> DiceResult:
+        if isinstance(other, DiceResult):
+            if len(other) == 0:
+                return self
+            if len(self) == 0:
+                return other
+        return DiceResult([other, self])
+
 
 
 class LowestDice(DiceResult):
-    def __init__(self, dice: Iterable[DieRoll], count: int):
+    def __init__(self, dice: Iterable[DiceComputation], count: int):
         super().__init__(dice)
         self.count = count
         self.selector = DiceSelector.lowest(count)
@@ -145,7 +187,23 @@ class LowestDice(DiceResult):
         return f'({kept}) <= low[{self.count}]({dice})'
 
     def __repr__(self) -> str:
-        return f'LowestDice({self.dice!r}, {self.count})'
+        return f'LowestDice({self.dice!r}, count={self.count})'
+
+    def __add__(self, other: DiceComputation) -> DiceResult:
+        if isinstance(other, DiceResult):
+            if len(other) == 0:
+                return self
+            if len(self) == 0:
+                return other
+        return DiceResult([self, other])
+
+    def __radd__(self, other: DiceComputation) -> DiceResult:
+        if isinstance(other, DiceResult):
+            if len(other) == 0:
+                return self
+            if len(self) == 0:
+                return other
+        return DiceResult([other, self])
 
 
 class DiceRoller:
@@ -191,7 +249,7 @@ class DiceRoller:
         for node in nodes:
             if isinstance(node, Dice):
                 result += self.evaluate_dice(node)
-            elif isinstance(node, DiceResult):
+            elif isinstance(node, DiceComputation):
                 result += node
             elif node is Token.ADD:
                 continue
@@ -199,7 +257,7 @@ class DiceRoller:
                 raise ValueError(f'Illegal token "{node}" in group')
         return result
 
-    def evaluate_dice(self, dice: Dice) -> DiceResult:
+    def evaluate_dice(self, dice: Dice) -> DiceComputation:
         rolls = repeat(dice.sides, dice.count)
         return DiceResult(map(self.roll, rolls))
 
