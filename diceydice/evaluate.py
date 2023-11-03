@@ -157,13 +157,9 @@ class FilteredDice(DiceResult):
     def kept_indexes(self) -> Iterable[int]:
         kept_dice = self.kept()
         for idx, die in enumerate(self.dice):
-            try:
-                next_kept = kept_dice[0]
-            except IndexError:
-                break
-            if die == kept_dice[0]:
+            if die in kept_dice:
                 yield idx
-                kept_dice = kept_dice[1:]
+                kept_dice.remove(die)
 
     def __str__(self) -> str:
         dice_str = ''
@@ -171,7 +167,6 @@ class FilteredDice(DiceResult):
         for idx, die in enumerate(self.dice):
             dice_str += ', ' if idx else ''
             dice_str += f"[{die}]" if idx in kept_indexes else str(die)
-        dice = ', '.join(map(str, self.dice))
         if self.count == 1:
             return f'{self.name}({dice_str})'
         return f'{self.name}[{self.count}]({dice_str})'

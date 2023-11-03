@@ -83,6 +83,7 @@ def test_dice_result_value(dice_result, expected_value):
     'dice_result,expected',
     [
         ('2d20 h1', [0]),
+        ('(1d2 + 1d4 + 1d6 + 1d8)kh2', [2, 3]),
         ('(1d2 + 1d8 + 1d4 + 1d6 + 1d6)kh2', [1, 3]),
     ],
     indirect=['dice_result'],
