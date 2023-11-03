@@ -1,3 +1,3 @@
-from .evaluate import evaluate
+from .diceydice import eval_expr as evaluate
 
 __all__ = ['evaluate']

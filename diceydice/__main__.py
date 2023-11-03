@@ -3,14 +3,7 @@ import readline
 import sys
 from typing import Optional
 
-from .evaluate import evaluate
-from .parser import tokenize
-
-
-def eval_expr(expr: str) -> None:
-    result = evaluate(tokenize(expr))
-    print(f'{result.value()} <= {result}')
-
+from .diceydice import eval_expr
 
 def completion(text: str, state: int) -> Optional[str]:
     if state > 0:
@@ -50,7 +43,7 @@ def repr() -> None:
     readline.set_completer(completion)
     try:
         while 'exit' not in (line := input().lower()):
-            eval_expr(line)
+            print(eval_expr(line))
     except (KeyboardInterrupt, EOFError):
         pass
 
