@@ -79,6 +79,18 @@ def test_dice_result_value(dice_result, expected_value):
     assert result == expected_value
 
 
+@pytest.mark.parametrize(
+    'dice_result,expected',
+    [
+        ('2d20 h1', [0]),
+        ('(1d2 + 1d8 + 1d4 + 1d6 + 1d6)kh2', [1, 3]),
+    ],
+    indirect=['dice_result'],
+)
+def test_filtered_dice_kept_indexes(dice_result, expected):
+    assert list(dice_result.kept_indexes()) == expected
+
+
 def test_dice_result():
     result = roller().evaluate(
         tokenize('2d20 + (1d2 + 1d4) kh1')

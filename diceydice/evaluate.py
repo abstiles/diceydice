@@ -145,17 +145,36 @@ class FilteredDice(DiceResult):
         self.count = count
 
     def __iter__(self) -> Iterator[DiceComputation]:
-        return iter(self.selector(self.dice))
+        return iter(self.kept())
 
     def value(self) -> int:
-        roll_values = map(int, self.selector(self.dice))
+        roll_values = map(int, self.kept())
         return sum(roll_values)
 
+    def kept(self) -> list[DiceComputation]:
+        return self.selector(self.dice)
+
+    def kept_indexes(self) -> Iterable[int]:
+        kept_dice = self.kept()
+        for idx, die in enumerate(self.dice):
+            try:
+                next_kept = kept_dice[0]
+            except IndexError:
+                break
+            if die == kept_dice[0]:
+                yield idx
+                kept_dice = kept_dice[1:]
+
     def __str__(self) -> str:
+        dice_str = ''
+        kept_indexes = set(self.kept_indexes())
+        for idx, die in enumerate(self.dice):
+            dice_str += ', ' if idx else ''
+            dice_str += f"[{die}]" if idx in kept_indexes else str(die)
         dice = ', '.join(map(str, self.dice))
         if self.count == 1:
-            return f'{self.name}({dice})'
-        return f'{self.name}[{self.count}]({dice})'
+            return f'{self.name}({dice_str})'
+        return f'{self.name}[{self.count}]({dice_str})'
 
     def __add__(self, other: DiceComputation) -> DiceResult:
         if isinstance(other, DiceResult):
