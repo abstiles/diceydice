@@ -13,6 +13,7 @@ T = TypeVar('T')
 Number: TypeAlias = Union[int, complex]
 ParseNode: TypeAlias = Union[Token, 'DiceComputation']
 Selector: TypeAlias = Callable[[Iterable['DiceComputation']], list['DiceComputation']]
+DiceAggregator: TypeAlias = Callable[[Iterable['DiceComputation']], Number]
 
 # U+1F4A5 is the "collision symbol" emoji.
 EFFECT_SYMBOL = "\U0001f4a5"
@@ -134,15 +135,10 @@ class CombatDieRoll(DiceComputation):
         )
 
 
-class DiceSum(DiceComputation):
-    def __init__(self, dice: Iterable[DiceComputation]):
+class DiceGroup(DiceComputation):
+    def __init__(self, dice: Iterable[DiceComputation], aggregator: DiceAggregator):
         self.dice = list(dice)
-
-    def highest(self, count: int = 1) -> "DiceSum":
-        return HighestDice(self.dice, count)
-
-    def lowest(self, count: int = 1) -> "DiceSum":
-        return LowestDice(self.dice, count)
+        self.aggregator = aggregator
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, self.__class__):
@@ -152,13 +148,43 @@ class DiceSum(DiceComputation):
     def __len__(self) -> int:
         return len(self.dice)
 
+    def __iter__(self) -> Iterator[DiceComputation]:
+        return iter(self.dice)
+
+    def __str__(self) -> str:
+        if len(self.dice) == 1:
+            return str(self.dice[0])
+        return ', '.join(map(self.fmt_die, self.dice))
+
+    def __repr__(self) -> str:
+        return f'DiceGroup({self.dice!r})'
+
+    def value(self) -> Number:
+        return self.aggregator(self.dice)
+
     @staticmethod
     def fmt_die(die: DiceComputation) -> str:
-        if isinstance(die, DiceSum) and len(die) > 1:
+        if isinstance(die, DiceGroup) and len(die) > 1:
             if not str(die).endswith(')'):
                 return f'({die})'
             return str(die)
         return str(die)
+
+
+class DiceSum(DiceGroup):
+    @staticmethod
+    def sum_values(dice: Iterable[DiceComputation]) -> Number:
+        roll_values = (die.value() for die in dice)
+        return sum(roll_values)
+
+    def __init__(self, dice: Iterable[DiceComputation]):
+        super().__init__(dice, self.sum_values)
+
+    def highest(self, count: int = 1) -> "DiceSum":
+        return HighestDice(self.dice, count)
+
+    def lowest(self, count: int = 1) -> "DiceSum":
+        return LowestDice(self.dice, count)
 
     def __str__(self) -> str:
         if len(self.dice) == 1:
@@ -179,13 +205,6 @@ class DiceSum(DiceComputation):
 
     def __radd__(self, other: DiceComputation) -> 'DiceSum':
         return self + other
-
-    def __iter__(self) -> Iterator[DiceComputation]:
-        return iter(self.dice)
-
-    def value(self) -> Number:
-        roll_values = (die.value() for die in self.dice)
-        return sum(roll_values)
 
 
 class FilteredDice(DiceSum):
