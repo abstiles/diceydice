@@ -1,4 +1,4 @@
-from .evaluate import DiceResult, evaluate
+from .evaluate import DiceComputation, evaluate
 from .parser import tokenize
 
 
@@ -27,5 +27,5 @@ def eval_expr(dice_expr: str, formatter: Formatter=MARKDOWN) -> str:
     return format_result(result, formatter)
 
 
-def format_result(roll: DiceResult, fmt: Formatter) -> str:
+def format_result(roll: DiceComputation, fmt: Formatter) -> str:
     return fmt.bold(roll.value()) + f' <= {roll}'

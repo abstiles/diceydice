@@ -1,7 +1,7 @@
 import re
 from typing import Optional
 
-TOKENIZER = re.compile(r'(?:\d+d\d+)|(?:k?[hl]\d*)|\S')
+TOKENIZER = re.compile(r'(?:\d+d\d+)|(?:k?[hl]\d*)|(?:\d*c)|\S')
 
 
 class Token:
@@ -31,6 +31,8 @@ class Token:
             return Dice.from_str(token)
         elif PostfixOperator.parse(token):
             return PostfixOperator.from_str(token)
+        elif Combat.parse(token):
+            return Combat.from_str(token)
         raise ValueError(f'Unknown token {token_str}')
 
 
@@ -116,6 +118,29 @@ class KeepLowest(PostfixOperator):
         if not isinstance(other, KeepLowest):
             return False
         return self.count == other.count
+
+
+class Combat(Token):
+    COMBAT_RE = re.compile(r'(\d*)c')
+
+    def __init__(self, count: int):
+        self.count = count
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Combat):
+            return False
+        return self.count == other.count
+
+    @classmethod
+    def parse(cls, token_str: str) -> Optional[re.Match[str]]:
+        return cls.COMBAT_RE.match(token_str)
+
+    @classmethod
+    def from_str(cls, token_str: str) -> 'Combat':
+        if match := cls.parse(token_str):
+            count: str = match.group(1)
+            return Combat(int(count or '1'))
+        raise ValueError(f'Invalid combat dice syntax {token_str!r}')
 
 
 def tokenize(expression: str) -> list[Token]:

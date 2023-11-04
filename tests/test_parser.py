@@ -1,6 +1,6 @@
 import pytest
 
-from diceydice.parser import Dice, KeepHighest, KeepLowest, Token, tokenize
+from diceydice.parser import Combat, Dice, KeepHighest, KeepLowest, Token, tokenize
 
 
 @pytest.mark.parametrize(
@@ -38,6 +38,10 @@ from diceydice.parser import Dice, KeepHighest, KeepLowest, Token, tokenize
                 KeepHighest(1),
             ],
         ),
+
+        # Combat dice
+        ('c', [Combat(1)]),
+        ('2c', [Combat(2)]),
     ],
 )
 def test_tokenize(input, tokens):

@@ -1,14 +1,23 @@
 from heapq import nlargest, nsmallest
 from itertools import repeat
+from operator import attrgetter
 from random import randrange
-from typing import Callable, Iterable, Iterator, SupportsInt, Union
+from typing import Callable, Iterable, Iterator, SupportsInt, TypeVar, Union
 
-from typing_extensions import TypeAlias
+from typing_extensions import TypeAlias, TypeGuard
 
-from .parser import Dice, KeepHighest, KeepLowest, PostfixOperator, Token
+from .parser import (
+    Combat, Dice, KeepHighest, KeepLowest, PostfixOperator, Token
+)
 
+T = TypeVar('T')
+Number: TypeAlias = Union[int, complex]
 ParseNode: TypeAlias = Union[Token, 'DiceComputation']
 Selector: TypeAlias = Callable[[Iterable['DiceComputation']], list['DiceComputation']]
+
+
+class MixedDiceError(ValueError):
+    pass
 
 
 class DiceSelector:
@@ -30,11 +39,18 @@ class DiceSelector:
 
 
 class DiceComputation:
-    def value(self) -> int:
-        return NotImplemented
+    def value(self) -> Number:
+        return 0
 
     def __int__(self) -> int:
-        return self.value()
+        # Just get the real component if value is complex.
+        return int(complex(self.value()).real)
+
+    def __str__(self) -> str:
+        return str(int(self))
+
+    def __repr__(self) -> str:
+        return 'DiceComputation()'
 
     def __lt__(self, other: object) -> bool:
         if not isinstance(other, SupportsInt):
@@ -69,9 +85,6 @@ class DieRoll(DiceComputation):
     def value(self) -> int:
         return self.result
 
-    def __str__(self) -> str:
-        return str(int(self))
-
     def __repr__(self) -> str:
         return f'DieRoll(sides={self.sides}, result={self.result})'
 
@@ -89,14 +102,41 @@ class DieRoll(DiceComputation):
         return (self.sides, self.result) == (other.sides, other.result)
 
 
-class DiceResult(DiceComputation):
+class CombatDieRoll(DiceComputation):
+    def __init__(self, result: int, effect: bool=False):
+        self.result = result
+        self.effect = effect
+
+    def value(self) -> complex:
+        return self.result + (1j if self.effect else 0)
+
+    def __str__(self) -> str:
+        # U+1F4A5 is the "collision symbol" emoji.
+        return "\U0001f4a5" if self.effect else str(self.result)
+
+    def __repr__(self) -> str:
+        return f'CombatDieRoll(result={self.result}, effect={self.effect})'
+
+    @classmethod
+    def from_d6(cls, roll: DieRoll) -> 'CombatDieRoll':
+        if roll.sides != 6:
+            raise ValueError("Can't create combat die from non-d6")
+        return (
+            CombatDieRoll(1) if roll.result == 1
+            else CombatDieRoll(2) if roll.result == 2
+            else CombatDieRoll(0) if roll.result in (3, 4)
+            else CombatDieRoll(1, effect=True)
+        )
+
+
+class DiceSum(DiceComputation):
     def __init__(self, dice: Iterable[DiceComputation]):
         self.dice = list(dice)
 
-    def highest(self, count: int = 1) -> "DiceResult":
+    def highest(self, count: int = 1) -> "DiceSum":
         return HighestDice(self.dice, count)
 
-    def lowest(self, count: int = 1) -> "DiceResult":
+    def lowest(self, count: int = 1) -> "DiceSum":
         return LowestDice(self.dice, count)
 
     def __eq__(self, other: object) -> bool:
@@ -107,35 +147,51 @@ class DiceResult(DiceComputation):
     def __len__(self) -> int:
         return len(self.dice)
 
+    @staticmethod
+    def fmt_die(die: DiceComputation) -> str:
+        if isinstance(die, DiceSum) and len(die) > 1:
+            if not str(die).endswith(')'):
+                return f'({die})'
+            return str(die)
+        return str(die)
+
     def __str__(self) -> str:
         if len(self.dice) == 1:
             return str(self.dice[0])
-        return '(' + ' + '.join(map(str, self.dice)) + ')'
+        return ' + '.join(map(self.fmt_die, self.dice))
 
     def __repr__(self) -> str:
-        return f'DiceResult({self.dice!r})'
+        return f'DiceSum({self.dice!r})'
 
-    def __add__(self, other: DiceComputation) -> 'DiceResult':
-        if isinstance(other, DiceResult):
-            # Don't create a new DiceResult group for trivial (0 or 1 dice)
+    def __add__(self, other: DiceComputation) -> 'DiceSum':
+        if isinstance(other, DiceSum):
+            # Don't create a new DiceSum group for trivial (0 or 1 dice)
             # cases.
             if len(self) <= 1 or len(other) <= 1:
-                return DiceResult(self.dice + other.dice)
-            return DiceResult([self, other])
-        return DiceResult(self.dice + [other])
+                return DiceSum(self.dice + other.dice)
+            return DiceSum([self, other])
+        return DiceSum(self.dice + [other])
 
-    def __radd__(self, other: DiceComputation) -> 'DiceResult':
+    def __radd__(self, other: DiceComputation) -> 'DiceSum':
         return self + other
 
     def __iter__(self) -> Iterator[DiceComputation]:
         return iter(self.dice)
 
-    def value(self) -> int:
-        roll_values = map(int, self.dice)
+    def value(self) -> Number:
+        roll_values = (die.value() for die in self.dice)
         return sum(roll_values)
 
+    @property
+    def result(self) -> int:
+        return int(self)
 
-class FilteredDice(DiceResult):
+    @property
+    def effects(self) -> int:
+        return int(complex(self.value()).imag)
+
+
+class FilteredDice(DiceSum):
     def __init__(
             self, dice: Iterable[DiceComputation],
             name: str, selector: Selector, count: int):
@@ -147,8 +203,8 @@ class FilteredDice(DiceResult):
     def __iter__(self) -> Iterator[DiceComputation]:
         return iter(self.kept())
 
-    def value(self) -> int:
-        roll_values = map(int, self.kept())
+    def value(self) -> Number:
+        roll_values = (die.value() for die in self.kept())
         return sum(roll_values)
 
     def kept(self) -> list[DiceComputation]:
@@ -171,21 +227,21 @@ class FilteredDice(DiceResult):
             return f'{self.name}({dice_str})'
         return f'{self.name}[{self.count}]({dice_str})'
 
-    def __add__(self, other: DiceComputation) -> DiceResult:
-        if isinstance(other, DiceResult):
+    def __add__(self, other: DiceComputation) -> DiceSum:
+        if isinstance(other, DiceSum):
             if len(other) == 0:
                 return self
             if len(self) == 0:
                 return other
-        return DiceResult([self, other])
+        return DiceSum([self, other])
 
-    def __radd__(self, other: DiceComputation) -> DiceResult:
-        if isinstance(other, DiceResult):
+    def __radd__(self, other: DiceComputation) -> DiceSum:
+        if isinstance(other, DiceSum):
             if len(other) == 0:
                 return self
             if len(self) == 0:
                 return other
-        return DiceResult([other, self])
+        return DiceSum([other, self])
 
 
 class HighestDice(FilteredDice):
@@ -211,7 +267,30 @@ class DiceRoller:
     def roll(self, sides: int) -> DieRoll:
         return DieRoll(sides=sides, result=self.rng(sides))
 
-    def evaluate(self, tokens: Iterable[Token]) -> DiceResult:
+    def evaluate(self, tokens: Iterable[Token]) -> DiceComputation:
+        uses_regular_dice = any(
+            isinstance(token, Dice) for token in tokens
+        )
+        uses_combat_dice = any(
+            isinstance(token, Combat) for token in tokens
+        )
+        if uses_regular_dice and uses_combat_dice:
+            raise MixedDiceError(
+                'Cannot add combat dice to regular dice'
+            )
+        if uses_combat_dice:
+            return self.eval_summation(tokens)
+        if uses_regular_dice:
+            return self.eval_summation(tokens)
+        return DiceComputation()
+
+    def eval_combat(self, tokens: Iterable[Token]) -> DiceComputation:
+        is_combat = _is_type(Combat)
+        combat_dice = filter(is_combat, tokens)
+        count = sum(dice.count for dice in combat_dice)
+        return DiceComputation()
+
+    def eval_summation(self, tokens: Iterable[Token]) -> DiceSum:
         context: list[ParseNode] = []
         for token in tokens:
             if token is Token.GROUP_START:
@@ -223,6 +302,8 @@ class DiceRoller:
                 context.append(self.evaluate_group(reversed(current_group)))
             elif isinstance(token, Dice):
                 context.append(self.evaluate_dice(token))
+            elif isinstance(token, Combat):
+                context.append(self.evaluate_combat(token))
             elif isinstance(token, PostfixOperator):
                 context.append(self.apply_postfix(context.pop(), token))
 
@@ -230,20 +311,20 @@ class DiceRoller:
 
     def apply_postfix(
             self, node: ParseNode, postfix: PostfixOperator
-    ) -> DiceResult:
-        if not isinstance(node, DiceResult):
+    ) -> DiceSum:
+        if not isinstance(node, DiceSum):
             raise ValueError(
                 f'{postfix} operator must follow dice roll or group'
             )
-        last_result: DiceResult = node
+        last_result: DiceSum = node
         if isinstance(postfix, KeepHighest):
             return last_result.highest(postfix.count)
         if isinstance(postfix, KeepLowest):
             return last_result.lowest(postfix.count)
         raise ValueError(f'Unhandled postfix operator {postfix!r}')
 
-    def evaluate_group(self, nodes: Iterable[ParseNode]) -> DiceResult:
-        result = DiceResult([])
+    def evaluate_group(self, nodes: Iterable[ParseNode]) -> DiceSum:
+        result = DiceSum([])
         for node in nodes:
             if isinstance(node, Dice):
                 result += self.evaluate_dice(node)
@@ -257,11 +338,22 @@ class DiceRoller:
 
     def evaluate_dice(self, dice: Dice) -> DiceComputation:
         rolls = repeat(dice.sides, dice.count)
-        return DiceResult(map(self.roll, rolls))
+        return DiceSum(map(self.roll, rolls))
+
+    def evaluate_combat(self, dice: Combat) -> DiceComputation:
+        rolls = repeat(6, dice.count)
+        d6_rolls = map(self.roll, rolls)
+        return DiceSum(map(CombatDieRoll.from_d6, d6_rolls))
 
 
 def random_roll(sides: int) -> int:
     return randrange(sides) + 1
+
+
+def _is_type(cls: type[T]) -> Callable[[object], TypeGuard[T]]:
+    def type_tester(obj: object) -> TypeGuard[T]:
+        return isinstance(obj, cls)
+    return type_tester
 
 
 evaluate = DiceRoller(random_roll).evaluate

@@ -39,11 +39,13 @@ def completion(text: str, state: int) -> Optional[str]:
 
 def repr() -> None:
     readline.parse_and_bind('tab: complete')
-    readline.parse_and_bind('complete -o nosort')
     readline.set_completer(completion)
     try:
         while 'exit' not in (line := input().lower()):
-            print(eval_expr(line, ANSI))
+            try:
+                print(eval_expr(line, ANSI))
+            except Exception as exc:
+                print('Error:', str(exc))
     except (KeyboardInterrupt, EOFError):
         pass
 

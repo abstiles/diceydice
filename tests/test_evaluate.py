@@ -1,6 +1,6 @@
 import pytest
 
-from diceydice.evaluate import DiceResult, DiceRoller, DieRoll
+from diceydice.evaluate import CombatDieRoll, DiceSum, DiceRoller, DieRoll
 from diceydice.parser import Dice, tokenize
 
 
@@ -96,10 +96,10 @@ def test_dice_result():
     result = roller().evaluate(
         tokenize('2d20 + (1d2 + 1d4) kh1')
     )
-    expected = DiceResult(
+    expected = DiceSum(
         [
-            DiceResult([DieRoll(20, 20), DieRoll(20, 20)]),
-            DiceResult([DieRoll(2, 2), DieRoll(4, 4)]).highest(),
+            DiceSum([DieRoll(20, 20), DieRoll(20, 20)]),
+            DiceSum([DieRoll(2, 2), DieRoll(4, 4)]).highest(),
         ]
     )
     assert result == expected
@@ -113,7 +113,8 @@ def test_dice_result():
     ],
 )
 def test_dice_result_highest(roll_results, count, expected_value):
-    results = DiceResult(roll_results).highest(count)
+    rolls = [DieRoll(x, x) for x in roll_results]
+    results = DiceSum(rolls).highest(count)
     assert results.value() == expected_value
 
 
@@ -125,5 +126,22 @@ def test_dice_result_highest(roll_results, count, expected_value):
     ],
 )
 def test_dice_result_lowest(roll_results, count, expected_value):
-    results = DiceResult(roll_results).lowest(count)
+    rolls = [DieRoll(x, x) for x in roll_results]
+    results = DiceSum(rolls).lowest(count)
     assert results.value() == expected_value
+
+
+def test_mixed_dice_types():
+    with pytest.raises(ValueError):
+        roller().evaluate(
+            tokenize('2d20 + 2c')
+        )
+
+
+def test_dice_sum_combat_dice():
+    total = DiceSum([
+        CombatDieRoll(2), CombatDieRoll(1, True),
+        CombatDieRoll(0), CombatDieRoll(1, True),
+    ])
+    assert total.result == 4
+    assert total.effects == 2
