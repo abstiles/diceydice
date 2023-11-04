@@ -1,10 +1,9 @@
 from heapq import nlargest, nsmallest
 from itertools import repeat
-from operator import attrgetter
 from random import randrange
 from typing import Callable, Iterable, Iterator, SupportsInt, TypeVar, Union
 
-from typing_extensions import TypeAlias, TypeGuard
+from typing_extensions import TypeAlias
 
 from .parser import (
     Combat, Dice, KeepHighest, KeepLowest, PostfixOperator, Token
@@ -15,6 +14,8 @@ Number: TypeAlias = Union[int, complex]
 ParseNode: TypeAlias = Union[Token, 'DiceComputation']
 Selector: TypeAlias = Callable[[Iterable['DiceComputation']], list['DiceComputation']]
 
+# U+1F4A5 is the "collision symbol" emoji.
+EFFECT_SYMBOL = "\U0001f4a5"
 
 class MixedDiceError(ValueError):
     pass
@@ -41,6 +42,14 @@ class DiceSelector:
 class DiceComputation:
     def value(self) -> Number:
         return 0
+
+    @property
+    def result(self) -> int:
+        return int(self)
+
+    @property
+    def effects(self) -> int:
+        return int(complex(self.value()).imag)
 
     def __int__(self) -> int:
         # Just get the real component if value is complex.
@@ -76,14 +85,14 @@ class DiceComputation:
 class DieRoll(DiceComputation):
     def __init__(self, sides: int, result: int):
         self.sides = sides
-        self.result = result
+        self._result = result
 
     @property
     def is_crit(self) -> bool:
-        return self.sides == self.result
+        return self.sides == self._result
 
     def value(self) -> int:
-        return self.result
+        return self._result
 
     def __repr__(self) -> str:
         return f'DieRoll(sides={self.sides}, result={self.result})'
@@ -104,15 +113,14 @@ class DieRoll(DiceComputation):
 
 class CombatDieRoll(DiceComputation):
     def __init__(self, result: int, effect: bool=False):
-        self.result = result
+        self._result = result
         self.effect = effect
 
     def value(self) -> complex:
-        return self.result + (1j if self.effect else 0)
+        return self._result + (1j if self.effect else 0)
 
     def __str__(self) -> str:
-        # U+1F4A5 is the "collision symbol" emoji.
-        return "\U0001f4a5" if self.effect else str(self.result)
+        return EFFECT_SYMBOL if self.effect else str(self.result)
 
     def __repr__(self) -> str:
         return f'CombatDieRoll(result={self.result}, effect={self.effect})'
@@ -181,14 +189,6 @@ class DiceSum(DiceComputation):
     def value(self) -> Number:
         roll_values = (die.value() for die in self.dice)
         return sum(roll_values)
-
-    @property
-    def result(self) -> int:
-        return int(self)
-
-    @property
-    def effects(self) -> int:
-        return int(complex(self.value()).imag)
 
 
 class FilteredDice(DiceSum):
@@ -268,27 +268,7 @@ class DiceRoller:
         return DieRoll(sides=sides, result=self.rng(sides))
 
     def evaluate(self, tokens: Iterable[Token]) -> DiceComputation:
-        uses_regular_dice = any(
-            isinstance(token, Dice) for token in tokens
-        )
-        uses_combat_dice = any(
-            isinstance(token, Combat) for token in tokens
-        )
-        if uses_regular_dice and uses_combat_dice:
-            raise MixedDiceError(
-                'Cannot add combat dice to regular dice'
-            )
-        if uses_combat_dice:
-            return self.eval_summation(tokens)
-        if uses_regular_dice:
-            return self.eval_summation(tokens)
-        return DiceComputation()
-
-    def eval_combat(self, tokens: Iterable[Token]) -> DiceComputation:
-        is_combat = _is_type(Combat)
-        combat_dice = filter(is_combat, tokens)
-        count = sum(dice.count for dice in combat_dice)
-        return DiceComputation()
+        return self.eval_summation(tokens)
 
     def eval_summation(self, tokens: Iterable[Token]) -> DiceSum:
         context: list[ParseNode] = []
@@ -348,12 +328,6 @@ class DiceRoller:
 
 def random_roll(sides: int) -> int:
     return randrange(sides) + 1
-
-
-def _is_type(cls: type[T]) -> Callable[[object], TypeGuard[T]]:
-    def type_tester(obj: object) -> TypeGuard[T]:
-        return isinstance(obj, cls)
-    return type_tester
 
 
 evaluate = DiceRoller(random_roll).evaluate

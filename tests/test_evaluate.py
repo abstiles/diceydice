@@ -131,13 +131,6 @@ def test_dice_result_lowest(roll_results, count, expected_value):
     assert results.value() == expected_value
 
 
-def test_mixed_dice_types():
-    with pytest.raises(ValueError):
-        roller().evaluate(
-            tokenize('2d20 + 2c')
-        )
-
-
 def test_dice_sum_combat_dice():
     total = DiceSum([
         CombatDieRoll(2), CombatDieRoll(1, True),

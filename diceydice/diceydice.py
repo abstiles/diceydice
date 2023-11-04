@@ -28,4 +28,4 @@ def eval_expr(dice_expr: str, formatter: Formatter=MARKDOWN) -> str:
 
 
 def format_result(roll: DiceComputation, fmt: Formatter) -> str:
-    return fmt.bold(roll.value()) + f' <= {roll}'
+    return fmt.bold(roll.result) + f' <= {roll}'
