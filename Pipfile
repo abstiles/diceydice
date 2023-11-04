@@ -16,3 +16,8 @@ typing-extensions = "*"
 
 [requires]
 python_version = "3.9"
+
+[scripts]
+lint = "bash -c 'flake8 --max-line-length 88 && mypy diceydice'"
+test = "pytest"
+check = "bash -c 'pipenv run lint && pipenv run test'"
