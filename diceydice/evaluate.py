@@ -18,10 +18,6 @@ Selector: TypeAlias = Callable[[Iterable['DiceComputation']], list['DiceComputat
 EFFECT_SYMBOL = "\U0001f4a5"
 
 
-class MixedDiceError(ValueError):
-    pass
-
-
 class DiceSelector:
     @staticmethod
     def highest(count: int = 1) -> Selector:
