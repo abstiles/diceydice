@@ -17,6 +17,7 @@ Selector: TypeAlias = Callable[[Iterable['DiceComputation']], list['DiceComputat
 # U+1F4A5 is the "collision symbol" emoji.
 EFFECT_SYMBOL = "\U0001f4a5"
 
+
 class MixedDiceError(ValueError):
     pass
 
@@ -112,7 +113,7 @@ class DieRoll(DiceComputation):
 
 
 class CombatDieRoll(DiceComputation):
-    def __init__(self, result: int, effect: bool=False):
+    def __init__(self, result: int, effect: bool = False):
         self._result = result
         self.effect = effect
 

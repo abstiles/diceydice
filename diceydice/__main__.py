@@ -5,6 +5,7 @@ from typing import Optional
 
 from .diceydice import eval_expr, ANSI
 
+
 def completion(text: str, state: int) -> Optional[str]:
     if state > 0:
         return None
