@@ -1,7 +1,8 @@
 import pytest
 
 from diceydice.parser import (
-    Combat, Dice, GE, GT, KeepHighest, KeepLowest, LE, LT, Token, tokenize,
+    Combat, CritLE, CritGE, Dice, GE, GT, KeepHighest, KeepLowest, LE, LT, Token,
+    tokenize,
 )
 
 
@@ -46,6 +47,8 @@ from diceydice.parser import (
         ('5d20<=10', [Dice(5, 20), LE(10)]),
         ('5d20>10', [Dice(5, 20), GT(10)]),
         ('5d20>=10', [Dice(5, 20), GE(10)]),
+        ('5d20<-10', [Dice(5, 20), CritLE(10)]),
+        ('5d20->10', [Dice(5, 20), CritGE(10)]),
 
         # Combat dice
         ('c', [Combat(1)]),

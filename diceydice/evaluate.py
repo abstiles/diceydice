@@ -10,7 +10,8 @@ from typing import (
 from typing_extensions import TypeAlias
 
 from .parser import (
-    Combat, Dice, GE, GT, KeepHighest, KeepLowest, LE, LT, PostfixOperator, Token
+    Combat, CritGE, CritLE, Dice, GE, GT, KeepHighest, KeepLowest, LE, LT,
+    PostfixOperator, Token
 )
 
 T = TypeVar('T')
@@ -87,8 +88,15 @@ class Operator(Enum):
 
 
 class Threshold(Selector):
+    OPER_MAP = {
+        Operator.GE: '≥',
+        Operator.GT: '>',
+        Operator.LE: '≤',
+        Operator.LT: '<',
+    }
+
     def __init__(self, oper: Operator, threshold: int):
-        self.name = f'{oper.value}{threshold}'
+        self.name = f'{self.OPER_MAP[oper]}{threshold}'
         self.oper = oper
         self.count = threshold
 
@@ -147,12 +155,8 @@ class DieRoll(DiceComputation):
         self._result = result
 
     @property
-    def is_crit_min(self) -> bool:
-        return self._result == 1
-
-    @property
-    def is_crit_max(self) -> bool:
-        return self._result == self.sides
+    def is_crit(self) -> bool:
+        return self._result in (1, self.sides)
 
     def value(self) -> int:
         return self._result
@@ -213,7 +217,7 @@ class DiceGroup(DiceComputation):
 
     def kept_indexes(self) -> Iterable[int]:
         for idx, value in enumerate(self.transformer(self.dice)):
-            if value:
+            if _real_int(value):
                 yield idx
 
     def __bool__(self) -> bool:
@@ -311,8 +315,12 @@ class DiceSum(DiceGroup):
         transformer = KeepSelected(selector)
         return DiceSum(self.dice, transformer)
 
-    def count(self, selector: Selector) -> 'DiceSum':
-        transformer = CountSelected(selector)
+    def count(
+            self, selector: Selector,
+            force_min: Optional[Number] = None,
+            force_max: Optional[Number] = None
+    ) -> 'DiceSum':
+        transformer = CountSelected(selector, force_min, force_max)
         return DiceSum(self.dice, transformer)
 
     def highest(self, count: int = 1) -> "DiceSum":
@@ -324,11 +332,17 @@ class DiceSum(DiceGroup):
     def le(self, threshold: int) -> 'DiceSum':
         return self.count(Threshold(Operator.LE, threshold))
 
+    def crit_le(self, threshold: int) -> 'DiceSum':
+        return self.count(Threshold(Operator.LE, threshold), 2, 1j)
+
     def lt(self, threshold: int) -> 'DiceSum':
         return self.count(Threshold(Operator.LT, threshold))
 
     def ge(self, threshold: int) -> 'DiceSum':
         return self.count(Threshold(Operator.GE, threshold))
+
+    def crit_ge(self, threshold: int) -> 'DiceSum':
+        return self.count(Threshold(Operator.GE, threshold), 1j, 2)
 
     def gt(self, threshold: int) -> 'DiceSum':
         return self.count(Threshold(Operator.GT, threshold))
@@ -377,8 +391,12 @@ class IdentityTransformer(KeepSelected):
 
 
 class CountSelected:
-    def __init__(self, selector: Selector):
+    def __init__(
+            self, selector: Selector, force_min: Optional[Number] = None,
+            force_max: Optional[Number] = None):
         self.selector = selector
+        self.force_min = force_min
+        self.force_max = force_max
 
     def __bool__(self) -> bool:
         return bool(self.selector)
@@ -389,14 +407,21 @@ class CountSelected:
     def __repr__(self) -> str:
         return f'CountSelected({self.selector!r})'
 
+    def override(self, die: DiceComputation) -> Optional[Number]:
+        if isinstance(die, DieRoll) and die.is_crit:
+            if die.value() == 1:
+                return self.force_min
+            return self.force_max
+        return None
+
     def __call__(self, dice: Iterable[DiceComputation]) -> Iterable[Number]:
         kept_dice = self.selector(dice)
         for die in dice:
             if die in kept_dice:
                 kept_dice.remove(die)
-                yield 1
+                yield 1 if not (new_value := self.override(die)) else new_value
             else:
-                yield 0
+                yield 0 if not (new_value := self.override(die)) else new_value
 
 
 class DiceRoller:
@@ -406,7 +431,7 @@ class DiceRoller:
     def roll(self, sides: int) -> DieRoll:
         return DieRoll(sides=sides, result=self.rng(sides))
 
-    def evaluate(self, tokens: Iterable[Token]) -> DiceComputation:
+    def evaluate(self, tokens: Iterable[Token]) -> DiceGroup:
         return self.eval_summation(tokens)
 
     def eval_summation(self, tokens: Iterable[Token]) -> DiceGroup:
@@ -442,10 +467,14 @@ class DiceRoller:
             return last_result.lowest(postfix.count)
         if isinstance(postfix, LE):
             return last_result.le(postfix.threshold)
+        if isinstance(postfix, CritLE):
+            return last_result.crit_le(postfix.threshold)
         if isinstance(postfix, LT):
             return last_result.lt(postfix.threshold)
         if isinstance(postfix, GE):
             return last_result.ge(postfix.threshold)
+        if isinstance(postfix, CritGE):
+            return last_result.crit_ge(postfix.threshold)
         if isinstance(postfix, GT):
             return last_result.gt(postfix.threshold)
         raise ValueError(f'Unhandled postfix operator {postfix!r}')
@@ -475,6 +504,10 @@ class DiceRoller:
 
 def random_roll(sides: int) -> int:
     return randrange(sides) + 1
+
+
+def _real_int(value: Number) -> int:
+    return int(complex(value).real)
 
 
 evaluate = DiceRoller(random_roll).evaluate

@@ -1,7 +1,8 @@
 import re
 from typing import Optional
 
-TOKENIZER = re.compile(r'(?:\d+d\d+)|(?:k?[hl]\d*)|(?:[<>]=?\d+)|(?:\d*c)|\S')
+# This is getting stupid.
+TOKENIZER = re.compile(r'\d+d\d+|k?[hl]\d*|[<>]=?\d+|<-\d+|->\d+|\d*c|\S')
 
 
 class Token:
@@ -71,7 +72,7 @@ class Dice(Token):
 
 
 class PostfixOperator(Token):
-    OPER_RE = re.compile(r'((?:k?[hl])|(?:[<>]=?))(\d*)')
+    OPER_RE = re.compile(r'((?:k?[hl])|<-|->|(?:[<>]=?))(\d*)')
 
     @classmethod
     def parse(cls, token_str: str) -> Optional[re.Match[str]]:
@@ -92,6 +93,8 @@ class PostfixOperator(Token):
                     '>': GT,
                     '<=': LE,
                     '<': LT,
+                    '<-': CritLE,
+                    '->': CritGE,
                 }[keep_type](int(count or '1'))
         except KeyError:
             pass
@@ -142,6 +145,16 @@ class ThresholdOperator(PostfixOperator):
             self.threshold == other.threshold
             and self.oper == other.oper
         )
+
+
+class CritGE(ThresholdOperator):
+    def __init__(self, threshold: int):
+        super().__init__('->', threshold)
+
+
+class CritLE(ThresholdOperator):
+    def __init__(self, threshold: int):
+        super().__init__('<-', threshold)
 
 
 class GE(ThresholdOperator):
