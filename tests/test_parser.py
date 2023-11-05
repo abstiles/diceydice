@@ -1,6 +1,8 @@
 import pytest
 
-from diceydice.parser import Combat, Dice, KeepHighest, KeepLowest, Token, tokenize
+from diceydice.parser import (
+    Combat, Dice, GE, GT, KeepHighest, KeepLowest, LE, LT, Token, tokenize,
+)
 
 
 @pytest.mark.parametrize(
@@ -38,6 +40,12 @@ from diceydice.parser import Combat, Dice, KeepHighest, KeepLowest, Token, token
                 KeepHighest(1),
             ],
         ),
+
+        # Threshold dice
+        ('5d20<10', [Dice(5, 20), LT(10)]),
+        ('5d20<=10', [Dice(5, 20), LE(10)]),
+        ('5d20>10', [Dice(5, 20), GT(10)]),
+        ('5d20>=10', [Dice(5, 20), GE(10)]),
 
         # Combat dice
         ('c', [Combat(1)]),

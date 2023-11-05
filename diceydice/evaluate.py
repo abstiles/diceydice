@@ -1,15 +1,21 @@
+import operator
+from collections import deque
+from enum import Enum
 from heapq import nlargest, nsmallest
 from itertools import repeat
 from random import randrange
-from typing import Callable, Iterable, Iterator, SupportsInt, TypeVar, Union
+from typing import (
+    Callable, Iterable, Iterator, Sized, SupportsInt, TypeVar, Union, cast
+)
 
 from typing_extensions import TypeAlias
 
 from .parser import (
-    Combat, Dice, KeepHighest, KeepLowest, PostfixOperator, Token
+    Combat, Dice, KeepHighest, KeepLowest, LE, PostfixOperator, Token
 )
 
 T = TypeVar('T')
+Comparator: TypeAlias = Callable[[object, object], bool]
 Number: TypeAlias = Union[int, complex]
 ParseNode: TypeAlias = Union[Token, 'DiceComputation']
 DiceAggregator: TypeAlias = Callable[[Iterable['DiceComputation']], Number]
@@ -19,7 +25,6 @@ EFFECT_SYMBOL = "\U0001f4a5"
 
 
 class Selector:
-    ALL: 'Selector'
     name = 'all'
     count = 0
 
@@ -60,6 +65,34 @@ class Lowest(Selector):
 
     def __call__(self, rolls: Iterable['DiceComputation']) -> list['DiceComputation']:
         return nsmallest(self.count, rolls)
+
+
+class Operator(Enum):
+    GE = ">="
+    GT = ">"
+    LE = "<="
+    LT = "<"
+
+    def __call__(self, left: int, right: int) -> bool:
+        map = {
+            Operator.GE: cast(Comparator, operator.ge),
+            Operator.GT: cast(Comparator, operator.gt),
+            Operator.LE: cast(Comparator, operator.le),
+            Operator.LT: cast(Comparator, operator.lt),
+        }
+        return map[self](left, right)
+
+
+class Threshold(Selector):
+    def __init__(self, oper: Operator, threshold: int):
+        self.name = f'{oper.value}{threshold}'
+        self.oper = oper
+        self.count = threshold
+
+    def __call__(self, rolls: Iterable['DiceComputation']) -> list['DiceComputation']:
+        def test(roll: DiceComputation) -> bool:
+            return self.oper(roll.result, self.count)
+        return list(filter(test, rolls))
 
 
 class DiceComputation:
@@ -265,6 +298,16 @@ class DiceGroup(DiceComputation):
             return f'{self.selector.name}({formatted})'
         return f'{self.selector.name}[{self.selector.count}]({formatted})'
 
+    @staticmethod
+    def count(dice: Iterable[DiceComputation]) -> Number:
+        if isinstance(dice, Sized):
+            return len(dice)
+        d = deque(enumerate(dice, 1), maxlen=1)
+        return d[0][0] if d else 0
+
+    def le(self, threshold: int) -> 'DiceGroup':
+        return DiceGroup(self.dice, Threshold(Operator.LE, threshold), self.count)
+
 
 class DiceSum(DiceGroup):
     def __init__(
@@ -348,6 +391,8 @@ class DiceRoller:
             return last_result.highest(postfix.count)
         if isinstance(postfix, KeepLowest):
             return last_result.lowest(postfix.count)
+        if isinstance(postfix, LE):
+            return last_result.le(postfix.threshold)
         raise ValueError(f'Unhandled postfix operator {postfix!r}')
 
     def evaluate_group(self, nodes: Iterable[ParseNode]) -> DiceGroup:

@@ -1,7 +1,7 @@
 import re
 from typing import Optional
 
-TOKENIZER = re.compile(r'(?:\d+d\d+)|(?:k?[hl]\d*)|(?:\d*c)|\S')
+TOKENIZER = re.compile(r'(?:\d+d\d+)|(?:k?[hl]\d*)|(?:[<>]=?\d+)|(?:\d*c)|\S')
 
 
 class Token:
@@ -71,7 +71,7 @@ class Dice(Token):
 
 
 class PostfixOperator(Token):
-    OPER_RE = re.compile(r'k?([hl])(\d*)')
+    OPER_RE = re.compile(r'((?:k?[hl])|(?:[<>]=?))(\d*)')
 
     @classmethod
     def parse(cls, token_str: str) -> Optional[re.Match[str]]:
@@ -85,7 +85,13 @@ class PostfixOperator(Token):
                 count: str = match.group(2)
                 return {
                     'h': KeepHighest,
+                    'kh': KeepHighest,
                     'l': KeepLowest,
+                    'kl': KeepLowest,
+                    '>=': GE,
+                    '>': GT,
+                    '<=': LE,
+                    '<': LT,
                 }[keep_type](int(count or '1'))
         except KeyError:
             pass
@@ -118,6 +124,44 @@ class KeepLowest(PostfixOperator):
         if not isinstance(other, KeepLowest):
             return False
         return self.count == other.count
+
+
+class ThresholdOperator(PostfixOperator):
+    def __init__(self, oper: str, threshold: int):
+        super().__init__(f'{oper}{threshold}')
+        self.oper = oper
+        self.threshold = threshold
+
+    def __repr__(self) -> str:
+        return f'{self.__class__})({self.threshold})'
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ThresholdOperator):
+            return False
+        return (
+            self.threshold == other.threshold
+            and self.oper == other.oper
+        )
+
+
+class GE(ThresholdOperator):
+    def __init__(self, threshold: int):
+        super().__init__('>=', threshold)
+
+
+class GT(ThresholdOperator):
+    def __init__(self, threshold: int):
+        super().__init__('>', threshold)
+
+
+class LE(ThresholdOperator):
+    def __init__(self, threshold: int):
+        super().__init__('<=', threshold)
+
+
+class LT(ThresholdOperator):
+    def __init__(self, threshold: int):
+        super().__init__('<', threshold)
 
 
 class Combat(Token):

@@ -138,3 +138,11 @@ def test_dice_sum_combat_dice():
     ])
     assert total.result == 4
     assert total.effects == 2
+
+
+def test_dice_sum_threshold():
+    total = DiceSum([
+        DieRoll(20, 5), DieRoll(20, 15), DieRoll(20, 10), DieRoll(20, 20),
+        DieRoll(20, 1),
+    ]).le(10)
+    assert total.result == 3
