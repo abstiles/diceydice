@@ -12,29 +12,54 @@ from .parser import (
 T = TypeVar('T')
 Number: TypeAlias = Union[int, complex]
 ParseNode: TypeAlias = Union[Token, 'DiceComputation']
-Selector: TypeAlias = Callable[[Iterable['DiceComputation']], list['DiceComputation']]
 DiceAggregator: TypeAlias = Callable[[Iterable['DiceComputation']], Number]
 
 # U+1F4A5 is the "collision symbol" emoji.
 EFFECT_SYMBOL = "\U0001f4a5"
 
 
-class DiceSelector:
-    @staticmethod
-    def highest(count: int = 1) -> Selector:
-        def selector(rolls: Iterable[DiceComputation]) -> list[DiceComputation]:
-            return nlargest(count, rolls)
-        return selector
+class Selector:
+    ALL: 'Selector'
+    name = 'all'
+    count = 0
 
-    @staticmethod
-    def lowest(count: int = 1) -> Selector:
-        def selector(rolls: Iterable[DiceComputation]) -> list[DiceComputation]:
-            return nsmallest(count, rolls)
-        return selector
+    # Select all.
+    def __call__(self, rolls: Iterable['DiceComputation']) -> list['DiceComputation']:
+        return list(rolls)
 
-    @staticmethod
-    def all() -> Selector:
-        return list
+    def __bool__(self) -> bool:
+        return self.count != 0
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, Selector)
+            and self.name == other.name
+            and self.count == other.count
+        )
+
+
+class Highest(Selector):
+    name = 'high'
+
+    def __init__(self, count: int = 1):
+        if count < 1:
+            raise ValueError("Can't keep less than one die")
+        self.count = count
+
+    def __call__(self, rolls: Iterable['DiceComputation']) -> list['DiceComputation']:
+        return nlargest(self.count, rolls)
+
+
+class Lowest(Selector):
+    name = 'low'
+
+    def __init__(self, count: int = 1):
+        if count < 1:
+            raise ValueError("Can't keep less than one die")
+        self.count = count
+
+    def __call__(self, rolls: Iterable['DiceComputation']) -> list['DiceComputation']:
+        return nsmallest(self.count, rolls)
 
 
 class DiceComputation:
@@ -136,92 +161,14 @@ class CombatDieRoll(DiceComputation):
 
 
 class DiceGroup(DiceComputation):
-    def __init__(self, dice: Iterable[DiceComputation], aggregator: DiceAggregator):
-        self.dice = list(dice)
-        self.aggregator = aggregator
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, self.__class__):
-            return False
-        return self.dice == other.dice
-
-    def __len__(self) -> int:
-        return len(self.dice)
-
-    def __iter__(self) -> Iterator[DiceComputation]:
-        return iter(self.dice)
-
-    def __str__(self) -> str:
-        if len(self.dice) == 1:
-            return str(self.dice[0])
-        return ', '.join(map(self.fmt_die, self.dice))
-
-    def __repr__(self) -> str:
-        return f'DiceGroup({self.dice!r})'
-
-    def value(self) -> Number:
-        return self.aggregator(self.dice)
-
-    @staticmethod
-    def fmt_die(die: DiceComputation) -> str:
-        if isinstance(die, DiceGroup) and len(die) > 1:
-            if not str(die).endswith(')'):
-                return f'({die})'
-            return str(die)
-        return str(die)
-
-
-class DiceSum(DiceGroup):
-    @staticmethod
-    def sum_values(dice: Iterable[DiceComputation]) -> Number:
-        roll_values = (die.value() for die in dice)
-        return sum(roll_values)
-
-    def __init__(self, dice: Iterable[DiceComputation]):
-        super().__init__(dice, self.sum_values)
-
-    def highest(self, count: int = 1) -> "DiceSum":
-        return HighestDice(self.dice, count)
-
-    def lowest(self, count: int = 1) -> "DiceSum":
-        return LowestDice(self.dice, count)
-
-    def __str__(self) -> str:
-        if len(self.dice) == 1:
-            return str(self.dice[0])
-        return ' + '.join(map(self.fmt_die, self.dice))
-
-    def __repr__(self) -> str:
-        return f'DiceSum({self.dice!r})'
-
-    def __add__(self, other: DiceComputation) -> 'DiceSum':
-        if isinstance(other, DiceSum):
-            # Don't create a new DiceSum group for trivial (0 or 1 dice)
-            # cases.
-            if len(self) <= 1 or len(other) <= 1:
-                return DiceSum(self.dice + other.dice)
-            return DiceSum([self, other])
-        return DiceSum(self.dice + [other])
-
-    def __radd__(self, other: DiceComputation) -> 'DiceSum':
-        return self + other
-
-
-class FilteredDice(DiceSum):
     def __init__(
             self, dice: Iterable[DiceComputation],
-            name: str, selector: Selector, count: int):
-        super().__init__(dice)
-        self.name = name
+            selector: Selector,
+            aggregator: DiceAggregator,
+    ):
+        self.dice = list(dice)
         self.selector = selector
-        self.count = count
-
-    def __iter__(self) -> Iterator[DiceComputation]:
-        return iter(self.kept())
-
-    def value(self) -> Number:
-        roll_values = (die.value() for die in self.kept())
-        return sum(roll_values)
+        self.aggregator = aggregator
 
     def kept(self) -> list[DiceComputation]:
         return self.selector(self.dice)
@@ -233,47 +180,131 @@ class FilteredDice(DiceSum):
                 yield idx
                 kept_dice.remove(die)
 
+    def __bool__(self) -> bool:
+        return len(self) != 0
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DiceGroup):
+            return False
+        return self.dice == other.dice and self.value() == other.value()
+
+    def __len__(self) -> int:
+        return len(self.dice)
+
+    def __iter__(self) -> Iterator[DiceComputation]:
+        return iter(self.kept())
+
     def __str__(self) -> str:
-        dice_str = ''
+        return self.fmt_str(', ')
+
+    def __repr__(self) -> str:
+        return f'DiceGroup({self.dice!r})'
+
+    def value(self) -> Number:
+        return self.aggregator(self.kept())
+
+    @staticmethod
+    def add_computation(left: DiceComputation, right: DiceComputation) -> 'DiceGroup':
+        # No-ops.
+        if not left or not right:
+            actual = left or right
+            if isinstance(actual, DiceGroup):
+                return actual
+            return DiceSum([actual])
+
+        # If there's a selector, we cannot generally combine the group with
+        # anything. We must create a new group containing both.
+        has_selector = (
+            isinstance(left, DiceGroup) and left.selector
+            or isinstance(right, DiceGroup) and right.selector
+        )
+        if has_selector:
+            return DiceSum([left, right])
+
+        # If both are groups...
+        if isinstance(left, DiceGroup) and isinstance(right, DiceGroup):
+            # Trivial groups can just be merged.
+            if len(left) <= 1 or len(right) <= 1:
+                return DiceSum(left.dice + right.dice)
+            # Otherwise create a new group to hold both.
+            return DiceSum([left, right])
+
+        # If either isn't a group, it's a single computation, which can just be
+        # added to the other's list.
+        if isinstance(left, DiceGroup):
+            return DiceSum(left.dice + [right])
+        if isinstance(right, DiceGroup):
+            return DiceSum([left] + right.dice)
+
+        raise TypeError(f'Unable to add {type(left)} and {type(right)}')
+
+    def __add__(self, other: DiceComputation) -> 'DiceGroup':
+        return self.add_computation(self, other)
+
+    def __radd__(self, other: DiceComputation) -> 'DiceGroup':
+        return self.add_computation(other, self)
+
+    @staticmethod
+    def fmt_die(die: DiceComputation) -> str:
+        if isinstance(die, DiceGroup) and len(die) > 1:
+            if not str(die).endswith(')'):
+                return f'({die})'
+            return str(die)
+        return str(die)
+
+    def fmt_str(self, separator: str) -> str:
+        if not self.selector:
+            return separator.join(map(str, self.dice))
+
+        formatted = ''
         kept_indexes = set(self.kept_indexes())
-        for idx, die in enumerate(self.dice):
-            dice_str += ', ' if idx else ''
-            dice_str += f"[{die}]" if idx in kept_indexes else str(die)
-        if self.count == 1:
-            return f'{self.name}({dice_str})'
-        return f'{self.name}[{self.count}]({dice_str})'
-
-    def __add__(self, other: DiceComputation) -> DiceSum:
-        if isinstance(other, DiceSum):
-            if len(other) == 0:
-                return self
-            if len(self) == 0:
-                return other
-        return DiceSum([self, other])
-
-    def __radd__(self, other: DiceComputation) -> DiceSum:
-        if isinstance(other, DiceSum):
-            if len(other) == 0:
-                return self
-            if len(self) == 0:
-                return other
-        return DiceSum([other, self])
+        for idx, die in enumerate(map(self.fmt_die, self.dice)):
+            formatted += separator if idx else ''
+            formatted += f"[{die}]" if idx in kept_indexes else die
+        if self.selector.count == 1:
+            return f'{self.selector.name}({formatted})'
+        return f'{self.selector.name}[{self.selector.count}]({formatted})'
 
 
-class HighestDice(FilteredDice):
-    def __init__(self, dice: Iterable[DiceComputation], count: int):
-        super().__init__(dice, "high", DiceSelector.highest(count), count)
+class DiceSum(DiceGroup):
+    def __init__(
+            self, dice: Iterable[DiceComputation],
+            selector: Selector = Selector()
+    ):
+        super().__init__(dice, selector, self.sum_values)
 
-    def __repr__(self) -> str:
-        return f'HighestDice({self.dice!r}, count={self.count})'
+    @staticmethod
+    def sum_values(dice: Iterable[DiceComputation]) -> Number:
+        roll_values = (die.value() for die in dice)
+        return sum(roll_values)
 
+    def highest(self, count: int = 1) -> "DiceSum":
+        return HighestDice(self.dice, count)
 
-class LowestDice(FilteredDice):
-    def __init__(self, dice: Iterable[DiceComputation], count: int):
-        super().__init__(dice, "low", DiceSelector.lowest(count), count)
+    def lowest(self, count: int = 1) -> "DiceSum":
+        return LowestDice(self.dice, count)
+
+    def __str__(self) -> str:
+        return self.fmt_str(' + ')
 
     def __repr__(self) -> str:
-        return f'LowestDice({self.dice!r}, count={self.count})'
+        return f'DiceSum({self.dice!r})'
+
+
+class HighestDice(DiceSum):
+    def __init__(self, dice: Iterable[DiceComputation], count: int):
+        super().__init__(dice, Highest(count))
+
+    def __repr__(self) -> str:
+        return f'HighestDice({self.dice!r}, count={self.selector.count})'
+
+
+class LowestDice(DiceSum):
+    def __init__(self, dice: Iterable[DiceComputation], count: int):
+        super().__init__(dice, Lowest(count))
+
+    def __repr__(self) -> str:
+        return f'LowestDice({self.dice!r}, count={self.selector.count})'
 
 
 class DiceRoller:
@@ -286,7 +317,7 @@ class DiceRoller:
     def evaluate(self, tokens: Iterable[Token]) -> DiceComputation:
         return self.eval_summation(tokens)
 
-    def eval_summation(self, tokens: Iterable[Token]) -> DiceSum:
+    def eval_summation(self, tokens: Iterable[Token]) -> DiceGroup:
         context: list[ParseNode] = []
         for token in tokens:
             if token is Token.GROUP_START:
@@ -319,8 +350,8 @@ class DiceRoller:
             return last_result.lowest(postfix.count)
         raise ValueError(f'Unhandled postfix operator {postfix!r}')
 
-    def evaluate_group(self, nodes: Iterable[ParseNode]) -> DiceSum:
-        result = DiceSum([])
+    def evaluate_group(self, nodes: Iterable[ParseNode]) -> DiceGroup:
+        result: DiceGroup = DiceSum([])
         for node in nodes:
             if isinstance(node, Dice):
                 result += self.evaluate_dice(node)
@@ -332,11 +363,11 @@ class DiceRoller:
                 raise ValueError(f'Illegal token "{node}" in group')
         return result
 
-    def evaluate_dice(self, dice: Dice) -> DiceComputation:
+    def evaluate_dice(self, dice: Dice) -> DiceSum:
         rolls = repeat(dice.sides, dice.count)
         return DiceSum(map(self.roll, rolls))
 
-    def evaluate_combat(self, dice: Combat) -> DiceComputation:
+    def evaluate_combat(self, dice: Combat) -> DiceSum:
         rolls = repeat(6, dice.count)
         d6_rolls = map(self.roll, rolls)
         return DiceSum(map(CombatDieRoll.from_d6, d6_rolls))
