@@ -144,5 +144,5 @@ def test_dice_sum_threshold():
     total = DiceSum([
         DieRoll(20, 5), DieRoll(20, 15), DieRoll(20, 10), DieRoll(20, 20),
         DieRoll(20, 1),
-    ]).le(10)
-    assert total.result == 3
+    ])
+    assert total.le(10).result == 3

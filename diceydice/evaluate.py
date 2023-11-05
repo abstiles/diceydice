@@ -1,27 +1,30 @@
 import operator
-from collections import deque
 from enum import Enum
 from heapq import nlargest, nsmallest
-from itertools import repeat
+from itertools import compress, repeat
 from random import randrange
 from typing import (
-    Callable, Iterable, Iterator, Sized, SupportsInt, TypeVar, Union, cast
+    Callable, Iterable, Iterator, Optional, Protocol, SupportsInt, TypeVar, Union, cast
 )
 
 from typing_extensions import TypeAlias
 
 from .parser import (
-    Combat, Dice, KeepHighest, KeepLowest, LE, PostfixOperator, Token
+    Combat, Dice, GE, GT, KeepHighest, KeepLowest, LE, LT, PostfixOperator, Token
 )
 
 T = TypeVar('T')
 Comparator: TypeAlias = Callable[[object, object], bool]
 Number: TypeAlias = Union[int, complex]
 ParseNode: TypeAlias = Union[Token, 'DiceComputation']
-DiceAggregator: TypeAlias = Callable[[Iterable['DiceComputation']], Number]
 
 # U+1F4A5 is the "collision symbol" emoji.
 EFFECT_SYMBOL = "\U0001f4a5"
+
+
+class DiceTransformer(Protocol):
+    def __call__(self, dice: Iterable['DiceComputation']) -> Iterable[Number]: ...
+    def __bool__(self) -> bool: ...
 
 
 class Selector:
@@ -144,8 +147,12 @@ class DieRoll(DiceComputation):
         self._result = result
 
     @property
-    def is_crit(self) -> bool:
-        return self.sides == self._result
+    def is_crit_min(self) -> bool:
+        return self._result == 1
+
+    @property
+    def is_crit_max(self) -> bool:
+        return self._result == self.sides
 
     def value(self) -> int:
         return self._result
@@ -196,22 +203,18 @@ class CombatDieRoll(DiceComputation):
 class DiceGroup(DiceComputation):
     def __init__(
             self, dice: Iterable[DiceComputation],
-            selector: Selector,
-            aggregator: DiceAggregator,
+            transformer: DiceTransformer,
     ):
         self.dice = list(dice)
-        self.selector = selector
-        self.aggregator = aggregator
+        self.transformer = transformer
 
-    def kept(self) -> list[DiceComputation]:
-        return self.selector(self.dice)
+    def kept(self) -> Iterable[DiceComputation]:
+        return compress(self.dice, self.transformer(self.dice))
 
     def kept_indexes(self) -> Iterable[int]:
-        kept_dice = self.kept()
-        for idx, die in enumerate(self.dice):
-            if die in kept_dice:
+        for idx, value in enumerate(self.transformer(self.dice)):
+            if value:
                 yield idx
-                kept_dice.remove(die)
 
     def __bool__(self) -> bool:
         return len(self) != 0
@@ -234,7 +237,7 @@ class DiceGroup(DiceComputation):
         return f'DiceGroup({self.dice!r})'
 
     def value(self) -> Number:
-        return self.aggregator(self.kept())
+        return sum(self.transformer(self.dice))
 
     @staticmethod
     def add_computation(left: DiceComputation, right: DiceComputation) -> 'DiceGroup':
@@ -245,13 +248,13 @@ class DiceGroup(DiceComputation):
                 return actual
             return DiceSum([actual])
 
-        # If there's a selector, we cannot generally combine the group with
-        # anything. We must create a new group containing both.
-        has_selector = (
-            isinstance(left, DiceGroup) and left.selector
-            or isinstance(right, DiceGroup) and right.selector
+        # If there's a nontrivial transformer, we cannot generally combine the
+        # group with anything. We must create a new group containing both.
+        has_transformer = (
+            isinstance(left, DiceGroup) and left.transformer
+            or isinstance(right, DiceGroup) and right.transformer
         )
-        if has_selector:
+        if has_transformer:
             return DiceSum([left, right])
 
         # If both are groups...
@@ -286,7 +289,7 @@ class DiceGroup(DiceComputation):
         return str(die)
 
     def fmt_str(self, separator: str) -> str:
-        if not self.selector:
+        if not self.transformer:
             return separator.join(map(str, self.dice))
 
         formatted = ''
@@ -294,60 +297,106 @@ class DiceGroup(DiceComputation):
         for idx, die in enumerate(map(self.fmt_die, self.dice)):
             formatted += separator if idx else ''
             formatted += f"[{die}]" if idx in kept_indexes else die
-        if self.selector.count == 1:
-            return f'{self.selector.name}({formatted})'
-        return f'{self.selector.name}[{self.selector.count}]({formatted})'
-
-    @staticmethod
-    def count(dice: Iterable[DiceComputation]) -> Number:
-        if isinstance(dice, Sized):
-            return len(dice)
-        d = deque(enumerate(dice, 1), maxlen=1)
-        return d[0][0] if d else 0
-
-    def le(self, threshold: int) -> 'DiceGroup':
-        return DiceGroup(self.dice, Threshold(Operator.LE, threshold), self.count)
+        return f'{self.transformer}({formatted})'
 
 
 class DiceSum(DiceGroup):
     def __init__(
             self, dice: Iterable[DiceComputation],
-            selector: Selector = Selector()
+            transformer: Optional[DiceTransformer] = None
     ):
-        super().__init__(dice, selector, self.sum_values)
+        super().__init__(dice, transformer or IdentityTransformer())
 
-    @staticmethod
-    def sum_values(dice: Iterable[DiceComputation]) -> Number:
-        roll_values = (die.value() for die in dice)
-        return sum(roll_values)
+    def keep(self, selector: Selector) -> 'DiceSum':
+        transformer = KeepSelected(selector)
+        return DiceSum(self.dice, transformer)
+
+    def count(self, selector: Selector) -> 'DiceSum':
+        transformer = CountSelected(selector)
+        return DiceSum(self.dice, transformer)
 
     def highest(self, count: int = 1) -> "DiceSum":
-        return HighestDice(self.dice, count)
+        return self.keep(Highest(count))
 
     def lowest(self, count: int = 1) -> "DiceSum":
-        return LowestDice(self.dice, count)
+        return self.keep(Lowest(count))
+
+    def le(self, threshold: int) -> 'DiceSum':
+        return self.count(Threshold(Operator.LE, threshold))
+
+    def lt(self, threshold: int) -> 'DiceSum':
+        return self.count(Threshold(Operator.LT, threshold))
+
+    def ge(self, threshold: int) -> 'DiceSum':
+        return self.count(Threshold(Operator.GE, threshold))
+
+    def gt(self, threshold: int) -> 'DiceSum':
+        return self.count(Threshold(Operator.GT, threshold))
 
     def __str__(self) -> str:
         return self.fmt_str(' + ')
 
     def __repr__(self) -> str:
-        return f'DiceSum({self.dice!r})'
+        return f'DiceSum(dice={self.dice!r}, transformer={self.transformer!r})'
 
 
-class HighestDice(DiceSum):
-    def __init__(self, dice: Iterable[DiceComputation], count: int):
-        super().__init__(dice, Highest(count))
+class KeepSelected:
+    def __init__(self, selector: Selector):
+        self.selector = selector
+
+    def __bool__(self) -> bool:
+        return bool(self.selector)
+
+    def __str__(self) -> str:
+        return self.selector.name + (
+            f'[{self.selector.count}]' if self.selector.count > 1 else ''
+        )
 
     def __repr__(self) -> str:
-        return f'HighestDice({self.dice!r}, count={self.selector.count})'
+        return f'KeepSelected({self.selector!r})'
+
+    def __call__(self, dice: Iterable[DiceComputation]) -> Iterable[Number]:
+        kept_dice = self.selector(dice)
+        for die in dice:
+            if die in kept_dice:
+                kept_dice.remove(die)
+                yield die.value()
+            else:
+                yield 0
 
 
-class LowestDice(DiceSum):
-    def __init__(self, dice: Iterable[DiceComputation], count: int):
-        super().__init__(dice, Lowest(count))
+class IdentityTransformer(KeepSelected):
+    def __init__(self) -> None:
+        self.selector = Selector()
+
+    def __str__(self) -> str:
+        return ''
 
     def __repr__(self) -> str:
-        return f'LowestDice({self.dice!r}, count={self.selector.count})'
+        return 'IdentityTransformer()'
+
+
+class CountSelected:
+    def __init__(self, selector: Selector):
+        self.selector = selector
+
+    def __bool__(self) -> bool:
+        return bool(self.selector)
+
+    def __str__(self) -> str:
+        return self.selector.name
+
+    def __repr__(self) -> str:
+        return f'CountSelected({self.selector!r})'
+
+    def __call__(self, dice: Iterable[DiceComputation]) -> Iterable[Number]:
+        kept_dice = self.selector(dice)
+        for die in dice:
+            if die in kept_dice:
+                kept_dice.remove(die)
+                yield 1
+            else:
+                yield 0
 
 
 class DiceRoller:
@@ -381,7 +430,7 @@ class DiceRoller:
 
     def apply_postfix(
             self, node: ParseNode, postfix: PostfixOperator
-    ) -> DiceSum:
+    ) -> DiceGroup:
         if not isinstance(node, DiceSum):
             raise ValueError(
                 f'{postfix} operator must follow dice roll or group'
@@ -393,6 +442,12 @@ class DiceRoller:
             return last_result.lowest(postfix.count)
         if isinstance(postfix, LE):
             return last_result.le(postfix.threshold)
+        if isinstance(postfix, LT):
+            return last_result.lt(postfix.threshold)
+        if isinstance(postfix, GE):
+            return last_result.ge(postfix.threshold)
+        if isinstance(postfix, GT):
+            return last_result.gt(postfix.threshold)
         raise ValueError(f'Unhandled postfix operator {postfix!r}')
 
     def evaluate_group(self, nodes: Iterable[ParseNode]) -> DiceGroup:
