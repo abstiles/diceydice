@@ -55,11 +55,14 @@ def format_result(roll: DiceGroup, fmt: Formatter) -> str:
     return fmt.bold(result)
 
 
-def format_roll(roll: DiceGroup, fmt: Formatter) -> str:
+def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> str:
+    if not isinstance(roll, DiceGroup):
+        return str(roll)
+
     def should_bold(die: DiceComputation) -> bool:
-        if not isinstance(die, DieRoll):
-            return False
-        return bool(transformed_value) and die.is_crit
+        if isinstance(die, DieRoll):
+            return die.is_crit and die.sides > 2
+        return False
 
     def format_die(die: DiceComputation) -> str:
         if isinstance(die, DiceGroup) and len(die) > 1:
@@ -68,19 +71,21 @@ def format_roll(roll: DiceGroup, fmt: Formatter) -> str:
             return str(die)
         return str(die)
 
-    separator = ' + '
-    if not roll.transformer:
-        return separator.join(map(str, roll.dice))
-
+    separator = ', ' if roll.transformer else ' + '
     dice = []
     for die, transformed_value in zip(roll.dice, roll.transformer(roll.dice)):
-        is_selected = _real_int(transformed_value)
-        die_str = f"[{die}]" if is_selected else str(die)
-        dice += [
-            fmt.bold(die_str) if should_bold(die) else die_str
-        ]
+        if isinstance(die, DiceGroup) and len(die) > 1:
+            dice += [format_roll(die, fmt, inner=True)]
+            continue
+        is_selected = bool(roll.transformer) and _real_int(transformed_value)
+        die_str = fmt.bold("[") if is_selected else ''
+        die_str += fmt.bold(die) if should_bold(die) else str(die)
+        die_str += fmt.bold("]") if is_selected else ''
+        dice += [die_str]
     dice_str = separator.join(dice)
-    return f'{roll.transformer}({dice_str})'
+    if inner or roll.transformer:
+        return f'{roll.transformer}({dice_str})'
+    return dice_str
 
 
 def _real_int(value: complex) -> int:
