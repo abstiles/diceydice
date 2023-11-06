@@ -9,6 +9,9 @@ class Formatter:
     def bold(self, text: object) -> str:
         return str(text)
 
+    def underline(self, text: object) -> str:
+        return f'[{text}]'
+
     def arrow(self) -> str:
         return '<='
 
@@ -16,6 +19,9 @@ class Formatter:
 class MarkdownFormatter(Formatter):
     def bold(self, text: object) -> str:
         return f'**{text}**'
+
+    def underline(self, text: object) -> str:
+        return f'__{text}__'
 
     def arrow(self) -> str:
         # Leftwards double arrow symbol.
@@ -25,6 +31,9 @@ class MarkdownFormatter(Formatter):
 class AnsiFormatter(Formatter):
     def bold(self, text: object) -> str:
         return f"\033[1m{text}\033[0m"
+
+    def underline(self, text: object) -> str:
+        return f"\033[4m{text}\033[0m"
 
     def arrow(self) -> str:
         # Left arrow symbol.
@@ -78,9 +87,9 @@ def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> s
             continue
         is_selected = bool(roll.transformer) and _real_int(transformed_value)
         if is_selected and should_bold(die):
-            dice += [fmt.bold(f'[{die}]')]
+            dice += [fmt.underline(fmt.bold(die))]
         elif is_selected:
-            dice += [fmt.bold('[') + str(die) + fmt.bold(']')]
+            dice += [fmt.underline(die)]
         elif should_bold(die):
             dice += [fmt.bold(die)]
         else:
