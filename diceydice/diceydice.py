@@ -77,10 +77,14 @@ def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> s
             dice += [format_roll(die, fmt, inner=True)]
             continue
         is_selected = bool(roll.transformer) and _real_int(transformed_value)
-        die_str = fmt.bold("[") if is_selected else ''
-        die_str += fmt.bold(die) if should_bold(die) else str(die)
-        die_str += fmt.bold("]") if is_selected else ''
-        dice += [die_str]
+        if is_selected and should_bold(die):
+            dice += [fmt.bold(f'[{die}]')]
+        elif is_selected:
+            dice += [fmt.bold('[') + str(die) + fmt.bold(']')]
+        elif should_bold(die):
+            dice += [fmt.bold(die)]
+        else:
+            dice += [str(die)]
     dice_str = separator.join(dice)
     if inner or roll.transformer:
         return f'{roll.transformer}({dice_str})'
