@@ -4,14 +4,32 @@ from heapq import nlargest, nsmallest
 from itertools import compress, repeat
 from random import randrange
 from typing import (
-    Callable, Iterable, Iterator, Optional, Protocol, SupportsInt, TypeVar, Union, cast
+    Callable,
+    cast,
+    Iterable,
+    Iterator,
+    Optional,
+    Protocol,
+    SupportsInt,
+    TypeVar,
+    Union,
 )
 
 from typing_extensions import TypeAlias
 
 from .parser import (
-    Combat, CritGE, CritLE, Dice, GE, GT, KeepHighest, KeepLowest, LE, LT,
-    PostfixOperator, Token
+    Combat,
+    CritGE,
+    CritLE,
+    Dice,
+    GE,
+    GT,
+    KeepHighest,
+    KeepLowest,
+    LE,
+    LT,
+    PostfixOperator,
+    Token,
 )
 
 T = TypeVar('T')

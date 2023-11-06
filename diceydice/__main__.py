@@ -3,7 +3,7 @@ import readline
 import sys
 from typing import Optional
 
-from .diceydice import eval_expr, ANSI
+from .diceydice import ANSI, eval_expr
 
 
 def completion(text: str, state: int) -> Optional[str]:
