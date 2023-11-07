@@ -11,6 +11,7 @@ from diceydice.parser import (
     [
         # Basic addition, grouping
         ('1d20', [Dice(1, 20)]),
+        ('1D20', [Dice(1, 20)]),
         ('1d20 + 1d2', [Dice(1, 20), Token.ADD, Dice(1, 2)]),
         ('1d20+1d2', [Dice(1, 20), Token.ADD, Dice(1, 2)]),
         (

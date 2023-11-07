@@ -201,7 +201,7 @@ class Combat(Token):
 
 
 def tokenize(expression: str) -> list[Token]:
-    token_strings: list[str] = TOKENIZER.findall(expression)
+    token_strings: list[str] = TOKENIZER.findall(expression.lower())
     try:
         return list(map(Token.from_str, token_strings))
     except ValueError:
