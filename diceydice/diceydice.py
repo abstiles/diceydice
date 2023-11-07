@@ -1,4 +1,6 @@
-from .evaluate import DiceComputation, DiceGroup, DieRoll, evaluate
+from typing import Optional
+
+from .evaluate import DiceComputation, DiceGroup, DiceRoller, DieRoll, evaluate
 from .parser import tokenize
 
 # Leftwards double arrow symbol
@@ -45,8 +47,12 @@ MARKDOWN = MarkdownFormatter()
 ANSI = AnsiFormatter()
 
 
-def eval_expr(dice_expr: str, formatter: Formatter = MARKDOWN) -> str:
-    result = evaluate(tokenize(dice_expr))
+def eval_expr(
+        dice_expr: str, formatter: Formatter = MARKDOWN,
+        dice_roller: Optional[DiceRoller] = None,
+) -> str:
+    roll = dice_roller.evaluate if dice_roller else evaluate
+    result = roll(tokenize(dice_expr))
     return format_computation(result, formatter)
 
 
