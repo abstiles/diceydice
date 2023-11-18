@@ -2,11 +2,12 @@ import re
 from typing import Optional
 
 # This is getting stupid.
-TOKENIZER = re.compile(r'\d+d\d+|k?[hl]\d*|[<>]=?\d+|<-\d+|->\d+|\d*c|\S')
+TOKENIZER = re.compile(r'\d+d\d+|k?[hl]\d*|[<>]=?\d+|<-\d+|->\d+|\d*c|\d+|\S')
 
 
 class Token:
     ADD: 'Token'
+    SUB: 'Token'
     GROUP_START: 'Token'
     GROUP_END: 'Token'
 
@@ -24,6 +25,8 @@ class Token:
         token = token_str.lower()
         if token == '+':
             return Token.ADD
+        elif token == '-':
+            return Token.SUB
         elif token == '(':
             return Token.GROUP_START
         elif token == ')':
@@ -34,12 +37,15 @@ class Token:
             return PostfixOperator.from_str(token)
         elif Combat.parse(token):
             return Combat.from_str(token)
+        elif FlatNumber.parse(token):
+            return FlatNumber.from_str(token)
         raise ValueError(f'Unknown token {token_str}')
 
 
 Token.GROUP_START = Token('(')
 Token.GROUP_END = Token(')')
 Token.ADD = Token('+')
+Token.SUB = Token('-')
 
 
 class Dice(Token):
@@ -181,6 +187,7 @@ class Combat(Token):
     COMBAT_RE = re.compile(r'(\d*)c')
 
     def __init__(self, count: int):
+        super().__init__(f'{count}c')
         self.count = count
 
     def __eq__(self, other: object) -> bool:
@@ -198,6 +205,30 @@ class Combat(Token):
             count: str = match.group(1)
             return Combat(int(count or '1'))
         raise ValueError(f'Invalid combat dice syntax {token_str!r}')
+
+
+class FlatNumber(Token):
+    NUMBER_RE = re.compile(r'^(\d+)$')
+
+    def __init__(self, value: int):
+        super().__init__(str(value))
+        self.value = value
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FlatNumber):
+            return False
+        return self.value == other.value
+
+    @classmethod
+    def parse(cls, token_str: str) -> Optional[re.Match[str]]:
+        return cls.NUMBER_RE.match(token_str)
+
+    @classmethod
+    def from_str(cls, token_str: str) -> 'FlatNumber':
+        if match := cls.parse(token_str):
+            value: str = match.group(1)
+            return FlatNumber(int(value))
+        raise ValueError(f'Invalid number literal {token_str!r}')
 
 
 def tokenize(expression: str) -> list[Token]:

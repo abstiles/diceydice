@@ -1,8 +1,8 @@
 import pytest
 
 from diceydice.parser import (
-    Combat, CritLE, CritGE, Dice, GE, GT, KeepHighest, KeepLowest, LE, LT, Token,
-    tokenize,
+    Combat, CritLE, CritGE, Dice, FlatNumber, GE, GT, KeepHighest, KeepLowest,
+    LE, LT, Token, tokenize,
 )
 
 
@@ -54,6 +54,11 @@ from diceydice.parser import (
         # Combat dice
         ('c', [Combat(1)]),
         ('2c', [Combat(2)]),
+
+        # Numeric literals
+        ('42', [FlatNumber(42)]),
+        ('1d20 + 10', [Dice(1, 20), Token.ADD, FlatNumber(10)]),
+        ('20 - 1d4', [FlatNumber(20), Token.SUB, Dice(1, 4)]),
     ],
 )
 def test_tokenize(input, tokens):
