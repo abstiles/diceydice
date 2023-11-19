@@ -1,16 +1,21 @@
 from dataclasses import dataclass
-from enum import auto, Enum
-from typing import Callable, Iterable, Protocol, TypeAlias
+from typing import Callable, Iterable, TypeAlias
 
 from . import lexer
 from .lexer import Token
 
-Number: TypeAlias = int | complex
 BinaryOperator: TypeAlias = Callable[['Expression', 'Expression'], 'Expression']
 
 PRECEDENCE = {
     '+': 1,
     '-': 1,
+    'k': 9,
+    '<=': 9,
+    '<-': 9,
+    '<': 9,
+    '>=': 9,
+    '->': 9,
+    '>': 9,
     '()': 10,
 }
 
@@ -25,26 +30,6 @@ class Expression:
     @property
     def precedence(self) -> int:
         return PRECEDENCE['()']
-
-
-class InfixOperator(Protocol):
-    @property
-    def symbol(self) -> str: ...
-    def __call__(self, lhs: Expression, rhs: Expression) -> Expression: ...
-
-
-class Add:
-    symbol = '+'
-
-    def __call__(self, lhs: Expression, rhs: Expression) -> Expression:
-        return lhs + rhs
-
-
-class Sub:
-    symbol = '-'
-
-    def __call__(self, lhs: Expression, rhs: Expression) -> Expression:
-        return lhs - rhs
 
 
 @dataclass(frozen=True)
@@ -152,98 +137,94 @@ class ThresholdExpr(Expression):
         return result
 
 
-class ParseState(Enum):
-    START = auto()
-    OPERATOR = auto()
-    EXPRESSION = auto()
-    POSTFIX = auto()
-
-
-class ParseStateMachine:
-    def __init__(self) -> None:
-        self._state = ParseState.START
-
-    @property
-    def state(self) -> ParseState:
-        return self._state
-
-    def expression(self) -> None:
-        self.to(ParseState.EXPRESSION)
-
-    def operator(self) -> None:
-        self.to(ParseState.OPERATOR)
-
-    def postfix(self) -> None:
-        self.to(ParseState.POSTFIX)
-
-    def to(self, new_state: ParseState) -> 'ParseStateMachine':
-        allowed_transitions = {
-            ParseState.START: {ParseState.EXPRESSION},
-            ParseState.EXPRESSION: {
-                ParseState.OPERATOR,
-                ParseState.POSTFIX,
-            },
-            ParseState.OPERATOR: {ParseState.EXPRESSION},
-            ParseState.POSTFIX: {ParseState.OPERATOR},
-        }
-        if new_state not in allowed_transitions[self.state]:
-            raise Exception(f'Cannot transition from {self.state} to {new_state}')
-        self._state = new_state
-        return self
-
-
 def parse_tokens(tokens: Iterable[Token]) -> Expression:
-    return _consume_token_list([*tokens])
+    return TdopParser(tokens).evaluate()
 
 
-def _consume_token_list(tokens: list[Token]) -> Expression:
-    state = ParseStateMachine()
-    operator: InfixOperator | None = None
-    exprs = []
+class TdopParser:
+    """Top-down operator precedence parsing"""
+    # https://eli.thegreenplace.net/2010/01/02/top-down-operator-precedence-parsing/
 
-    while tokens:
-        match tokens.pop(0):
+    def __init__(self, tokens: Iterable[Token]):
+        # Copy the tokens and create an iterator over them
+        self._tokens = iter(list(tokens))
+        self.next_token = next(self._tokens, None)
+
+    def advance(self) -> Token | None:
+        current_token = self.next_token
+        self.next_token = next(self._tokens, None)
+        return current_token
+
+    def evaluate(self, expression_bind_power: int = 0) -> Expression:
+        if expression_bind_power < 0:
+            raise ValueError('Bind power cannot be less than 0')
+        token = self.advance()
+        left = self.parse_atom(token)
+        while expression_bind_power < self.bind_power(self.next_token):
+            # Due to the while loop's check, we can be sure the next token
+            # is non-Null. The assertion is safe and informs the type checker.
+            token = self.advance()
+            assert token is not None
+            left = self.apply_operator(left, token)
+
+        return left
+
+    def parse_atom(self, token: Token | None) -> Expression:
+        match token:
             case Token.GROUP_START:
-                state.expression()
-                exprs.append(_consume_token_list(tokens))
-            case Token.GROUP_END:
-                state.operator()
-                break
+                expr = self.evaluate()
+                # Consume end paren and advance before returning expr.
+                if self.next_token is not Token.GROUP_END:
+                    raise Exception('Unclosed parentheses')
+                self.advance()
+                return expr
             case lexer.Dice(count=count, sides=sides):
-                state.expression()
-                exprs.append(DiceExpr(count, sides))
+                return DiceExpr(count, sides)
             case lexer.Combat(count=count):
-                state.expression()
-                exprs.append(CombatDiceExpr(count))
+                return CombatDiceExpr(count)
             case lexer.Literal(value=value):
-                state.expression()
-                exprs.append(ConstantExpr(value))
-            case lexer.KeepHighest(count=count):
-                state.postfix()
-                exprs.append(KeepHighestExpr(count, exprs.pop()))
-            case lexer.KeepLowest(count=count):
-                state.postfix()
-                exprs.append(KeepLowestExpr(count, exprs.pop()))
-            case (lexer.CritGE() | lexer.CritLE()) as mod:
-                state.postfix()
-                exprs.append(ThresholdExpr(mod.oper, mod.threshold, 1, exprs.pop()))
-            case (lexer.GE() | lexer.GT() | lexer.LE() | lexer.LT()) as mod:
-                state.postfix()
-                exprs.append(ThresholdExpr(mod.oper, mod.threshold, 0, exprs.pop()))
+                return ConstantExpr(value)
+            case None:
+                raise Exception('Unexpected end of input')
+            case other:
+                raise Exception(f'Unknown atom {other}')
+
+    def apply_operator(self, left: Expression, oper: Token) -> Expression:
+        bind_power = self.bind_power(oper)
+        match oper:
             case Token.ADD:
-                state.operator()
-                operator = Add()
+                right = self.evaluate(bind_power)
+                return left + right
             case Token.SUB:
-                state.operator()
-                operator = Sub()
-            case token:
-                raise Exception(f'Unknown token {token}')
+                right = self.evaluate(bind_power)
+                return left - right
+            case lexer.KeepHighest(count=count):
+                return KeepHighestExpr(count, left)
+            case lexer.KeepLowest(count=count):
+                return KeepLowestExpr(count, left)
+            case (lexer.CritGE() | lexer.CritLE()) as mod:
+                return ThresholdExpr(mod.oper, mod.threshold, 1, left)
+            case (lexer.GE() | lexer.GT() | lexer.LE() | lexer.LT()) as mod:
+                return ThresholdExpr(mod.oper, mod.threshold, 0, left)
+            case other:
+                raise Exception(f'Unknown operator {other}')
 
-        if operator is not None and len(exprs) > 1:
-            rhs, lhs = exprs.pop(), exprs.pop()
-            exprs.append(operator(lhs, rhs))
-
-    result = exprs.pop()
-    if exprs:
-        raise Exception(f'Parsing error {exprs!r}, {result}')
-    return result
+    @staticmethod
+    def bind_power(token: Token | None) -> int:
+        match token:
+            case None:
+                return 0
+            case Token.GROUP_START:
+                return 0
+            case Token.GROUP_END:
+                return 0
+            case Token.ADD:
+                return PRECEDENCE['+']
+            case Token.SUB:
+                return PRECEDENCE['-']
+            case lexer.KeepHighest() | lexer.KeepLowest():
+                return PRECEDENCE['k']
+            case lexer.ThresholdOperator(oper=operator):
+                return PRECEDENCE[operator]
+            case other:
+                raise Exception(f'Unknown operator {other}')

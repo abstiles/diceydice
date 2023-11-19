@@ -14,6 +14,10 @@ from diceydice.parser import (
         ('2d20 + 1d6', DiceExpr(2, 20) + DiceExpr(1, 6)),
         ('1d20 + 1d2 + 1d4', DiceExpr(1, 20) + DiceExpr(1, 2) + DiceExpr(1, 4)),
         ('1d20 + (1d2 + 1d4)', DiceExpr(1, 20) + (DiceExpr(1, 2) + DiceExpr(1, 4))),
+        (
+            '1d20 + (1d2 + 1d4)h',
+            DiceExpr(1, 20) + KeepHighestExpr(1, DiceExpr(1, 2) + DiceExpr(1, 4))
+        ),
         ('20 - 1d4', ConstantExpr(20) - DiceExpr(1, 4)),
         ('2d20h', KeepHighestExpr(1, DiceExpr(2, 20))),
         ('2d20l', KeepLowestExpr(1, DiceExpr(2, 20))),
