@@ -1,7 +1,7 @@
 import pytest
 
 from diceydice.lexer import (
-    Combat, CritLE, CritGE, Dice, FlatNumber, GE, GT, KeepHighest, KeepLowest,
+    Combat, CritLE, CritGE, Dice, Literal, GE, GT, KeepHighest, KeepLowest,
     LE, LT, Token, tokenize,
 )
 
@@ -56,9 +56,9 @@ from diceydice.lexer import (
         ('2c', [Combat(2)]),
 
         # Numeric literals
-        ('42', [FlatNumber(42)]),
-        ('1d20 + 10', [Dice(1, 20), Token.ADD, FlatNumber(10)]),
-        ('20 - 1d4', [FlatNumber(20), Token.SUB, Dice(1, 4)]),
+        ('42', [Literal(42)]),
+        ('1d20 + 10', [Dice(1, 20), Token.ADD, Literal(10)]),
+        ('20 - 1d4', [Literal(20), Token.SUB, Dice(1, 4)]),
     ],
 )
 def test_tokenize(input, tokens):

@@ -37,8 +37,8 @@ class Token:
             return PostfixOperator.from_str(token)
         elif Combat.parse(token):
             return Combat.from_str(token)
-        elif FlatNumber.parse(token):
-            return FlatNumber.from_str(token)
+        elif Literal.parse(token):
+            return Literal.from_str(token)
         raise ValueError(f'Unknown token {token_str}')
 
 
@@ -207,7 +207,7 @@ class Combat(Token):
         raise ValueError(f'Invalid combat dice syntax {token_str!r}')
 
 
-class FlatNumber(Token):
+class Literal(Token):
     NUMBER_RE = re.compile(r'^(\d+)$')
 
     def __init__(self, value: int):
@@ -215,7 +215,7 @@ class FlatNumber(Token):
         self.value = value
 
     def __eq__(self, other: object) -> bool:
-        if not isinstance(other, FlatNumber):
+        if not isinstance(other, Literal):
             return False
         return self.value == other.value
 
@@ -224,10 +224,10 @@ class FlatNumber(Token):
         return cls.NUMBER_RE.match(token_str)
 
     @classmethod
-    def from_str(cls, token_str: str) -> 'FlatNumber':
+    def from_str(cls, token_str: str) -> 'Literal':
         if match := cls.parse(token_str):
             value: str = match.group(1)
-            return FlatNumber(int(value))
+            return Literal(int(value))
         raise ValueError(f'Invalid number literal {token_str!r}')
 
 
