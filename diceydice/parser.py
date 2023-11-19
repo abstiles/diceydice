@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import auto, Enum
 from typing import Callable, Iterable, Protocol, TypeAlias
 
 from . import lexer
@@ -13,6 +13,7 @@ PRECEDENCE = {
     '-': 1,
     '()': 10,
 }
+
 
 class Expression:
     def __add__(self, other: 'Expression') -> 'AddExpr':
@@ -34,12 +35,14 @@ class InfixOperator(Protocol):
 
 class Add:
     symbol = '+'
+
     def __call__(self, lhs: Expression, rhs: Expression) -> Expression:
         return lhs + rhs
 
 
 class Sub:
     symbol = '-'
+
     def __call__(self, lhs: Expression, rhs: Expression) -> Expression:
         return lhs - rhs
 
@@ -50,9 +53,15 @@ class AddExpr(Expression):
     rhs: Expression
 
     def __str__(self) -> str:
-        result = str(self.lhs) if self.lhs.precedence >= self.precedence else f'({self.lhs})'
+        result = (
+            str(self.lhs) if self.lhs.precedence >= self.precedence
+            else f'({self.lhs})'
+        )
         result += ' + '
-        result += str(self.rhs) if self.rhs.precedence > self.precedence else  f'({self.rhs})'
+        result += (
+            str(self.rhs) if self.rhs.precedence > self.precedence
+            else f'({self.rhs})'
+        )
         return result
 
     @property
@@ -66,9 +75,15 @@ class SubExpr(Expression):
     rhs: Expression
 
     def __str__(self) -> str:
-        result = str(self.lhs) if self.lhs.precedence >= self.precedence else f'({self.lhs})'
+        result = (
+            str(self.lhs) if self.lhs.precedence >= self.precedence
+            else f'({self.lhs})'
+        )
         result += ' - '
-        result += str(self.rhs) if self.rhs.precedence > self.precedence else  f'({self.rhs})'
+        result += (
+            str(self.rhs) if self.rhs.precedence > self.precedence
+            else f'({self.rhs})'
+        )
         return result
 
     @property
@@ -86,6 +101,14 @@ class DiceExpr(Expression):
 
 
 @dataclass
+class CombatDiceExpr(Expression):
+    count: int
+
+    def __str__(self) -> str:
+        return f'{self.count}c'
+
+
+@dataclass
 class ConstantExpr(Expression):
     value: int
 
@@ -93,29 +116,75 @@ class ConstantExpr(Expression):
         return str(self.value)
 
 
+@dataclass
+class KeepHighestExpr(Expression):
+    count: int
+    operand: Expression
+
+    def __str__(self) -> str:
+        if self.count == 1:
+            return f'{self.operand}h'
+        return f'{self.operand}h{self.count}'
+
+
+@dataclass
+class KeepLowestExpr(Expression):
+    count: int
+    operand: Expression
+
+    def __str__(self) -> str:
+        if self.count == 1:
+            return f'{self.operand}l'
+        return f'{self.operand}l{self.count}'
+
+
+@dataclass
+class ThresholdExpr(Expression):
+    operator: str
+    threshold: int
+    crit_threshold: int
+    operand: Expression
+
+    def __str__(self) -> str:
+        result = f'{self.operand}{self.operator}{self.threshold}'
+        if self.crit_threshold > 1:
+            result += f'!{self.crit_threshold}'
+        return result
+
+
 class ParseState(Enum):
-    OPERATOR_PENDING = auto()
-    EXPRESSION_PENDING = auto()
+    START = auto()
+    OPERATOR = auto()
+    EXPRESSION = auto()
+    POSTFIX = auto()
 
 
 class ParseStateMachine:
-    def __init__(self, start: ParseState):
-        self._state = start
+    def __init__(self) -> None:
+        self._state = ParseState.START
 
     @property
     def state(self) -> ParseState:
         return self._state
 
-    def expect_operator(self) -> None:
-        self.to(ParseState.OPERATOR_PENDING)
+    def expression(self) -> None:
+        self.to(ParseState.EXPRESSION)
 
-    def expect_expression(self) -> None:
-        self.to(ParseState.EXPRESSION_PENDING)
+    def operator(self) -> None:
+        self.to(ParseState.OPERATOR)
+
+    def postfix(self) -> None:
+        self.to(ParseState.POSTFIX)
 
     def to(self, new_state: ParseState) -> 'ParseStateMachine':
         allowed_transitions = {
-            ParseState.OPERATOR_PENDING: {ParseState.EXPRESSION_PENDING},
-            ParseState.EXPRESSION_PENDING: {ParseState.OPERATOR_PENDING},
+            ParseState.START: {ParseState.EXPRESSION},
+            ParseState.EXPRESSION: {
+                ParseState.OPERATOR,
+                ParseState.POSTFIX,
+            },
+            ParseState.OPERATOR: {ParseState.EXPRESSION},
+            ParseState.POSTFIX: {ParseState.OPERATOR},
         }
         if new_state not in allowed_transitions[self.state]:
             raise Exception(f'Cannot transition from {self.state} to {new_state}')
@@ -128,32 +197,47 @@ def parse_tokens(tokens: Iterable[Token]) -> Expression:
 
 
 def _consume_token_list(tokens: list[Token]) -> Expression:
-    state = ParseStateMachine(start=ParseState.EXPRESSION_PENDING)
+    state = ParseStateMachine()
     operator: InfixOperator | None = None
     exprs = []
 
     while tokens:
         match tokens.pop(0):
             case Token.GROUP_START:
+                state.expression()
                 exprs.append(_consume_token_list(tokens))
-                state.expect_operator()
             case Token.GROUP_END:
-                state.expect_expression()
+                state.operator()
                 break
             case lexer.Dice(count=count, sides=sides):
+                state.expression()
                 exprs.append(DiceExpr(count, sides))
-                state.expect_operator()
+            case lexer.Combat(count=count):
+                state.expression()
+                exprs.append(CombatDiceExpr(count))
             case lexer.Literal(value=value):
+                state.expression()
                 exprs.append(ConstantExpr(value))
-                state.expect_operator()
+            case lexer.KeepHighest(count=count):
+                state.postfix()
+                exprs.append(KeepHighestExpr(count, exprs.pop()))
+            case lexer.KeepLowest(count=count):
+                state.postfix()
+                exprs.append(KeepLowestExpr(count, exprs.pop()))
+            case (lexer.CritGE() | lexer.CritLE()) as mod:
+                state.postfix()
+                exprs.append(ThresholdExpr(mod.oper, mod.threshold, 1, exprs.pop()))
+            case (lexer.GE() | lexer.GT() | lexer.LE() | lexer.LT()) as mod:
+                state.postfix()
+                exprs.append(ThresholdExpr(mod.oper, mod.threshold, 0, exprs.pop()))
             case Token.ADD:
+                state.operator()
                 operator = Add()
-                state.expect_expression()
             case Token.SUB:
+                state.operator()
                 operator = Sub()
-                state.expect_expression()
-            case _:
-                raise Exception("ohno")
+            case token:
+                raise Exception(f'Unknown token {token}')
 
         if operator is not None and len(exprs) > 1:
             rhs, lhs = exprs.pop(), exprs.pop()
