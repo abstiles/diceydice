@@ -15,7 +15,7 @@ isort = "*"
 typing-extensions = "*"
 
 [requires]
-python_version = "3.9"
+python_version = "3.10"
 
 [scripts]
 fmt = "isort --dt --tc -m 3 diceydice"

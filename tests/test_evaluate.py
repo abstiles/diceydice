@@ -1,7 +1,7 @@
 import pytest
 
 from diceydice.evaluate import CombatDieRoll, DiceSum, DiceRoller, DieRoll
-from diceydice.parser import Dice, tokenize
+from diceydice.lexer import Dice, tokenize
 
 
 def roller():

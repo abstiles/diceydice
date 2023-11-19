@@ -1,7 +1,7 @@
 from typing import Optional
 
 from .evaluate import DiceComputation, DiceGroup, DiceRoller, DieRoll, evaluate
-from .parser import tokenize
+from .lexer import tokenize
 
 # Leftwards double arrow symbol
 ARROW = '\u21d0'

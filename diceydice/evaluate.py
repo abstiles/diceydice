@@ -17,7 +17,7 @@ from typing import (
 
 from typing_extensions import TypeAlias
 
-from .parser import (
+from .lexer import (
     Combat,
     CritGE,
     CritLE,
