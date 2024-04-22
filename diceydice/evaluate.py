@@ -19,6 +19,7 @@ from typing_extensions import TypeAlias
 
 from .parser import (
     Combat,
+    Constant,
     CritGE,
     CritLE,
     Dice,
@@ -220,6 +221,14 @@ class CombatDieRoll(DiceComputation):
             else CombatDieRoll(0) if roll.result in (3, 4)
             else CombatDieRoll(1, effect=True)
         )
+
+
+class Modifier(DiceComputation):
+    def __init__(self, value: int):
+        self._value = value
+
+    def value(self) -> int:
+        return self._value
 
 
 class DiceGroup(DiceComputation):
@@ -490,6 +499,8 @@ class DiceRoller:
                 context.append(self.evaluate_combat(token))
             elif isinstance(token, PostfixOperator):
                 context.append(self.apply_postfix(context.pop(), token))
+            elif isinstance(token, Constant):
+                context.append(Modifier(token.value))
 
         return self.evaluate_group(context)
 

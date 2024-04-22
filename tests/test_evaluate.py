@@ -77,6 +77,12 @@ def dice_result(request):
         ('1d20 + (1d2 + 1d4 + 2d6)kh1', 26),
         ('1d20 + (1d2 + (2d6))kh1', 32),
         ('1d20 + (1d2 + 1d4 + (2d6))kh1', 32),
+
+        # Constant modifiers
+        ('2d20 + 2', 42),
+        ('3d20 - 42', 18),
+        ('(1d6 + 10) + 2', 18),
+        ('(1d9 + (1d8 + 2))h', 10),
     ],
     indirect=['dice_result'],
 )
