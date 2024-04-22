@@ -71,6 +71,12 @@ def dice_result(request):
         # Postfix operators
         ('2d20 h1', 20),
         ('1d20 + (1d2 + 1d4 + 1d6)kh1', 26),
+
+        # Funny groupings
+        ('1d20 + (1d2 + 2d6)kh1', 26),
+        ('1d20 + (1d2 + 1d4 + 2d6)kh1', 26),
+        ('1d20 + (1d2 + (2d6))kh1', 32),
+        ('1d20 + (1d2 + 1d4 + (2d6))kh1', 32),
     ],
     indirect=['dice_result'],
 )

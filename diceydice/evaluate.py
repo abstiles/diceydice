@@ -226,9 +226,14 @@ class DiceGroup(DiceComputation):
     def __init__(
             self, dice: Iterable[DiceComputation],
             transformer: DiceTransformer,
+            is_closed: bool = False,
     ):
         self.dice = list(dice)
         self.transformer = transformer
+        self.is_closed = is_closed
+
+    def close(self) -> 'DiceGroup':
+        return DiceGroup(self.dice, self.transformer, True)
 
     def kept(self) -> Iterable[DiceComputation]:
         return compress(self.dice, self.transformer(self.dice))
@@ -270,6 +275,23 @@ class DiceGroup(DiceComputation):
                 return actual
             return DiceSum([actual])
 
+        def is_closed_group(dc: DiceComputation) -> bool:
+            return isinstance(dc, DiceGroup) and dc.is_closed
+
+        def dice_list(dc: DiceComputation) -> list[DiceComputation]:
+            if isinstance(dc, DiceGroup):
+                return dc.dice
+            return [dc]
+
+        # When a group is closed, it doesn't merge with another. We only create
+        # a new group containing it and whatever else.
+        if is_closed_group(left) and is_closed_group(right):
+            return DiceSum([left, right])
+        elif is_closed_group(left):
+            return DiceSum([left] + dice_list(right))
+        elif is_closed_group(right):
+            return DiceSum(dice_list(left) + [right])
+
         # If there's a nontrivial transformer, we cannot generally combine the
         # group with anything. We must create a new group containing both.
         has_transformer = (
@@ -279,13 +301,9 @@ class DiceGroup(DiceComputation):
         if has_transformer:
             return DiceSum([left, right])
 
-        # If both are groups...
+        # If both are groups, merge them.
         if isinstance(left, DiceGroup) and isinstance(right, DiceGroup):
-            # Trivial groups can just be merged.
-            if len(left) <= 1 or len(right) <= 1:
-                return DiceSum(left.dice + right.dice)
-            # Otherwise create a new group to hold both.
-            return DiceSum([left, right])
+            return DiceSum(left.dice + right.dice)
 
         # If either isn't a group, it's a single computation, which can just be
         # added to the other's list.
@@ -325,9 +343,13 @@ class DiceGroup(DiceComputation):
 class DiceSum(DiceGroup):
     def __init__(
             self, dice: Iterable[DiceComputation],
-            transformer: Optional[DiceTransformer] = None
+            transformer: Optional[DiceTransformer] = None,
+            is_closed: bool = False,
     ):
-        super().__init__(dice, transformer or IdentityTransformer())
+        super().__init__(dice, transformer or IdentityTransformer(), is_closed)
+
+    def close(self) -> 'DiceSum':
+        return DiceSum(self.dice, self.transformer, True)
 
     def keep(self, selector: Selector) -> 'DiceSum':
         transformer = KeepSelected(selector)
@@ -508,7 +530,7 @@ class DiceRoller:
                 continue
             else:
                 raise ValueError(f'Illegal token "{node}" in group')
-        return result
+        return result.close()
 
     def evaluate_dice(self, dice: Dice) -> DiceSum:
         rolls = repeat(dice.sides, dice.count)
