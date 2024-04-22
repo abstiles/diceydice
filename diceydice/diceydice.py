@@ -70,7 +70,7 @@ def format_result(roll: DiceGroup, fmt: Formatter) -> str:
 
 
 def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> str:
-    if not isinstance(roll, DiceGroup):
+    if not isinstance(roll, DiceGroup) or len(roll) <= 1:
         return str(roll)
 
     def should_bold(die: DiceComputation) -> bool:
@@ -88,18 +88,17 @@ def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> s
     separator = ', ' if roll.transformer else ' + '
     dice = []
     for die, transformed_value in zip(roll.dice, roll.transformer(roll.dice)):
-        if isinstance(die, DiceGroup) and len(die) > 1:
-            dice += [format_roll(die, fmt, inner=True)]
-            continue
+        roll_str = format_roll(die, fmt, inner=True)
+
         is_selected = bool(roll.transformer) and _real_int(transformed_value)
         if is_selected and should_bold(die):
-            dice += [fmt.underline(fmt.bold(die))]
+            dice += [fmt.underline(fmt.bold(roll_str))]
         elif is_selected:
-            dice += [fmt.underline(die)]
+            dice += [fmt.underline(roll_str)]
         elif should_bold(die):
-            dice += [fmt.bold(die)]
+            dice += [fmt.bold(roll_str)]
         else:
-            dice += [str(die)]
+            dice += [roll_str]
     dice_str = separator.join(dice)
     if inner or roll.transformer:
         return f'{roll.transformer}({dice_str})'
