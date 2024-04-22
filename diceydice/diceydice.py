@@ -3,8 +3,11 @@ from typing import Optional
 from .evaluate import DiceComputation, DiceGroup, DiceRoller, DieRoll, evaluate
 from .parser import tokenize
 
-# Leftwards double arrow symbol
-ARROW = '\u21d0'
+# Leftwards double arrow symbol.
+DOUBLE_ARROW = '\u21d0'
+
+# Left arrow symbol. (Reads better on my terminal.)
+ARROW = '\u2b05'
 
 
 class Formatter:
@@ -26,20 +29,19 @@ class MarkdownFormatter(Formatter):
         return f'__{text}__'
 
     def arrow(self) -> str:
-        # Leftwards double arrow symbol.
-        return '\u21d0'
+        return DOUBLE_ARROW
 
 
 class AnsiFormatter(Formatter):
     def bold(self, text: object) -> str:
-        return f"\033[1m{text}\033[0m"
+        return f"\033[1m{text}\033[22m"
 
     def underline(self, text: object) -> str:
-        return f"\033[4m{text}\033[0m"
+        return f"\033[4m{text}\033[24m"
 
     def arrow(self) -> str:
-        # Left arrow symbol.
-        return '\u2b05 '
+        # Gets an extra space because it's wide in a monospace setting.
+        return ARROW + ' '
 
 
 PLAIN = Formatter()
