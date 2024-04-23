@@ -17,6 +17,7 @@ from typing import (
 
 from typing_extensions import TypeAlias
 
+from .exceptions import DiceSyntaxError
 from .parser import (
     Combat,
     Constant,
@@ -71,7 +72,7 @@ class Highest(Selector):
 
     def __init__(self, count: int = 1):
         if count < 1:
-            raise ValueError("Can't keep less than one die")
+            raise DiceSyntaxError("Can't keep less than one die")
         self.count = count
 
     def __call__(self, rolls: Iterable['DiceComputation']) -> list['DiceComputation']:
@@ -83,7 +84,7 @@ class Lowest(Selector):
 
     def __init__(self, count: int = 1):
         if count < 1:
-            raise ValueError("Can't keep less than one die")
+            raise DiceSyntaxError("Can't keep less than one die")
         self.count = count
 
     def __call__(self, rolls: Iterable['DiceComputation']) -> list['DiceComputation']:
@@ -508,7 +509,7 @@ class DiceRoller:
             self, node: ParseNode, postfix: PostfixOperator
     ) -> DiceGroup:
         if not isinstance(node, DiceSum):
-            raise ValueError(
+            raise DiceSyntaxError(
                 f'{postfix} operator must follow dice roll or group'
             )
         last_result: DiceSum = node
@@ -540,7 +541,7 @@ class DiceRoller:
             elif node is Token.ADD:
                 continue
             else:
-                raise ValueError(f'Illegal token "{node}" in group')
+                raise DiceSyntaxError(f'Illegal token "{node}" in group')
         return result.close()
 
     def evaluate_dice(self, dice: Dice) -> DiceSum:

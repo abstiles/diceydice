@@ -4,6 +4,8 @@ from abc import ABCMeta, abstractmethod
 from typing import ClassVar, Optional
 from typing_extensions import Self
 
+from .exceptions import TokenizeError
+
 
 class TokenMeta(ABCMeta):
     match_regexes: list[str] = []
@@ -265,6 +267,5 @@ def tokenize(expression: str) -> list[Token]:
     matches = (match.group(0) for match in token_strings)
     try:
         return list(map(Token.from_str, matches))
-    except ValueError:
-        print("Tokens:", repr(token_strings))
-        raise
+    except ValueError as exc:
+        raise TokenizeError(str(exc)) from exc
