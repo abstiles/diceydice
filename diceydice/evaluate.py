@@ -24,6 +24,7 @@ from .parser import (
     CritGE,
     CritLE,
     Dice,
+    EQ,
     GE,
     GT,
     KeepHighest,
@@ -96,9 +97,11 @@ class Operator(Enum):
     GT = ">"
     LE = "<="
     LT = "<"
+    EQ = "=="
 
     def __call__(self, left: int, right: int) -> bool:
         map = {
+            Operator.EQ: cast(Comparator, operator.eq),
             Operator.GE: cast(Comparator, operator.ge),
             Operator.GT: cast(Comparator, operator.gt),
             Operator.LE: cast(Comparator, operator.le),
@@ -109,6 +112,7 @@ class Operator(Enum):
 
 class Threshold(Selector):
     OPER_MAP = {
+        Operator.EQ: '=',
         Operator.GE: '≥',
         Operator.GT: '>',
         Operator.LE: '≤',
@@ -379,6 +383,9 @@ class DiceSum(DiceGroup):
     def lowest(self, count: int = 1) -> "DiceSum":
         return self.keep(Lowest(count))
 
+    def eq(self, threshold: int) -> 'DiceSum':
+        return self.count(Threshold(Operator.EQ, threshold))
+
     def le(self, threshold: int) -> 'DiceSum':
         return self.count(Threshold(Operator.LE, threshold))
 
@@ -517,6 +524,8 @@ class DiceRoller:
             return last_result.highest(postfix.count)
         if isinstance(postfix, KeepLowest):
             return last_result.lowest(postfix.count)
+        if isinstance(postfix, EQ):
+            return last_result.eq(postfix.threshold)
         if isinstance(postfix, LE):
             return last_result.le(postfix.threshold)
         if isinstance(postfix, CritLE):

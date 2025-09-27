@@ -141,7 +141,7 @@ class Dice(Token, match=r'(\d+)d(\d+)'):
         raise ValueError(f'Invalid dice syntax {token_str!r}')
 
 
-class PostfixOperator(Token, match=r'((?:k?[hl])|<-|->|(?:[<>]=?))(\d*)'):
+class PostfixOperator(Token, match=r'((?:k?[hl])|<-|->|(?:[<>=]=?))(\d*)'):
     @classmethod
     def from_str(cls, token_str: str) -> 'PostfixOperator':
         try:
@@ -153,6 +153,8 @@ class PostfixOperator(Token, match=r'((?:k?[hl])|<-|->|(?:[<>]=?))(\d*)'):
                     'kh': KeepHighest,
                     'l': KeepLowest,
                     'kl': KeepLowest,
+                    '==': EQ,
+                    '=': EQ,
                     '>=': GE,
                     '>': GT,
                     '<=': LE,
@@ -239,6 +241,11 @@ class LE(ThresholdOperator):
 class LT(ThresholdOperator):
     def __init__(self, threshold: int):
         super().__init__('<', threshold)
+
+
+class EQ(ThresholdOperator):
+    def __init__(self, threshold: int):
+        super().__init__('==', threshold)
 
 
 class Combat(Token, match=r'(\d*)c'):
