@@ -61,6 +61,7 @@ class BaseToken(metaclass=TokenMeta):
 
 class Token(BaseToken, match=r"\S"):
     ADD: ClassVar[Self]
+    SUB: ClassVar[Self]
     GROUP_START: ClassVar[Self]
     GROUP_END: ClassVar[Self]
 
@@ -71,13 +72,15 @@ class Token(BaseToken, match=r"\S"):
         return self.token_str
 
     def __repr__(self) -> str:
-        return f'{self.__class__}({self.token_str!r})'
+        return f'{self.__class__.__name__}({self.token_str!r})'
 
     @classmethod
     def from_str(cls, token_str: str) -> 'Token':
         token = token_str.lower()
         if token == '+':
             return Token.ADD
+        elif token == '-':
+            return Token.SUB
         elif token == '(':
             return Token.GROUP_START
         elif token == ')':
@@ -93,6 +96,7 @@ class Token(BaseToken, match=r"\S"):
 Token.GROUP_START = Token('(')
 Token.GROUP_END = Token(')')
 Token.ADD = Token('+')
+Token.SUB = Token('-')
 
 
 class Constant(Token, match=r'(-?)\s*(\d+)\b'):
@@ -118,7 +122,7 @@ class Constant(Token, match=r'(-?)\s*(\d+)\b'):
         raise ValueError(f'Invalid numeric syntax {token_str!r}')
 
 
-class Dice(Token, match=r'(\d+)d(\d+)'):
+class Dice(Token, match=r'(\d*)d(\d+)'):
     def __init__(self, count: int, sides: int):
         super().__init__(f'{count}d{sides}')
         self.count = count
@@ -137,7 +141,7 @@ class Dice(Token, match=r'(\d+)d(\d+)'):
         if match := cls.parse(token_str):
             count: str = match.group(1)
             sides: str = match.group(2)
-            return Dice(int(count), int(sides))
+            return Dice(int(count or "1"), int(sides))
         raise ValueError(f'Invalid dice syntax {token_str!r}')
 
 
@@ -251,6 +255,7 @@ class EQ(ThresholdOperator):
 class Combat(Token, match=r'(\d*)c'):
     def __init__(self, count: int):
         self.count = count
+        self.token_str = f'{count}c'
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Combat):
@@ -261,8 +266,34 @@ class Combat(Token, match=r'(\d*)c'):
     def from_str(cls, token_str: str) -> 'Combat':
         if match := cls.parse(token_str):
             count: str = match.group(1)
-            return Combat(int(count or '1'))
+            instance = Combat(int(count or '1'))
+            instance.token_str = token_str
+            return instance
         raise ValueError(f'Invalid combat dice syntax {token_str!r}')
+
+
+class Triangle(Token, match=r'(\d*)tri(?:angle)?(?:@(\d+))?'):
+    def __init__(self, count: int = 6, burnout: int = 0):
+        self.count = count
+        self.burnout = burnout
+        self.token_str = f'{count}tri'
+        if burnout:
+            self.token_str += f'@{burnout}'
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Triangle):
+            return False
+        return self.count == other.count
+
+    @classmethod
+    def from_str(cls, token_str: str) -> 'Triangle':
+        if match := cls.parse(token_str):
+            count: str = match.group(1)
+            burnout: str = match.group(2)
+            instance = Triangle(int(count or '6'), int(burnout or '0'))
+            instance.token_str = token_str
+            return instance
+        raise ValueError(f'Invalid triangle dice syntax {token_str!r}')
 
 
 def tokenize(expression: str) -> list[Token]:

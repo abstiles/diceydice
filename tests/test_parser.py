@@ -1,18 +1,20 @@
 import pytest
 
 from diceydice.parser import (
-    Combat, Constant, CritLE, CritGE, Dice, GE, GT,
-    KeepHighest, KeepLowest, LE, LT, Token, tokenize,
+    Combat, Constant, CritLE, CritGE, Dice, EQ, GE, GT,
+    KeepHighest, KeepLowest, LE, LT, Token, Triangle, tokenize,
 )
 
 
 @pytest.mark.parametrize(
     'input,tokens',
     [
-        # Basic addition, grouping
+        # Basic addition, subtraction, grouping
+        ('d20', [Dice(1, 20)]),
         ('1d20', [Dice(1, 20)]),
         ('1D20', [Dice(1, 20)]),
         ('1d20 + 1d2', [Dice(1, 20), Token.ADD, Dice(1, 2)]),
+        ('1d20 - 1d2', [Dice(1, 20), Token.SUB, Dice(1, 2)]),
         ('1d20+1d2', [Dice(1, 20), Token.ADD, Dice(1, 2)]),
         (
             '(1d20 + 1d2)',
@@ -48,12 +50,19 @@ from diceydice.parser import (
         ('5d20<=10', [Dice(5, 20), LE(10)]),
         ('5d20>10', [Dice(5, 20), GT(10)]),
         ('5d20>=10', [Dice(5, 20), GE(10)]),
+        ('5d20=10', [Dice(5, 20), EQ(10)]),
+        ('5d20==10', [Dice(5, 20), EQ(10)]),
         ('5d20<-10', [Dice(5, 20), CritLE(10)]),
         ('5d20->10', [Dice(5, 20), CritGE(10)]),
 
         # Combat dice
         ('c', [Combat(1)]),
         ('2c', [Combat(2)]),
+
+        # Triangle dice
+        ('tri', [Triangle(6)]),
+        ('2tri', [Triangle(2)]),
+        ('tri@2', [Triangle(burnout=2)]),
 
         # Constants
         ('42', [Constant(42)]),

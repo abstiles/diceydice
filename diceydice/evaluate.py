@@ -24,6 +24,7 @@ from .parser import (
     CritGE,
     CritLE,
     Dice,
+    Triangle,
     EQ,
     GE,
     GT,
@@ -37,7 +38,7 @@ from .parser import (
 
 T = TypeVar('T')
 Comparator: TypeAlias = Callable[[object, object], bool]
-Number: TypeAlias = Union[int, complex]
+Number: TypeAlias = Union[int, float, complex]
 ParseNode: TypeAlias = Union[Token, 'DiceComputation']
 
 # U+1F4A5 is the "collision symbol" emoji.
@@ -136,7 +137,7 @@ class DiceComputation:
 
     @property
     def result(self) -> int:
-        return int(self)
+        return self.value().real
 
     @property
     def effects(self) -> int:
@@ -182,7 +183,7 @@ class DieRoll(DiceComputation):
     def is_crit(self) -> bool:
         return self._result in (1, self.sides)
 
-    def value(self) -> int:
+    def value(self) -> Number:
         return self._result
 
     def __repr__(self) -> str:
@@ -200,6 +201,28 @@ class DieRoll(DiceComputation):
         if not isinstance(other, DieRoll):
             return False
         return (self.sides, self.result) == (other.sides, other.result)
+
+
+class TriangleDieRoll(DieRoll):
+    def __init__(self, result: int):
+        self.sides = 4
+        self._result = result
+
+    @property
+    def is_crit(self) -> bool:
+        return self._result == 3
+
+    def value(self) -> Number:
+        return self._result
+
+    def __repr__(self) -> str:
+        return f'TriangleDieRoll(result={self._result})'
+
+    @classmethod
+    def from_d4(cls, roll: DieRoll) -> 'TriangleDieRoll':
+        if roll.sides != 4:
+            raise ValueError("Can't create triangle die from non-d4")
+        return TriangleDieRoll(roll.result)
 
 
 class CombatDieRoll(DiceComputation):
@@ -236,6 +259,14 @@ class Modifier(DiceComputation):
         return self._value
 
 
+class Negative(DiceComputation):
+    def __init__(self, dice: DiceComputation):
+        self._dice = dice
+
+    def value(self) -> Number:
+        return -self._dice.value()
+
+
 class DiceGroup(DiceComputation):
     def __init__(
             self, dice: Iterable[DiceComputation],
@@ -247,6 +278,8 @@ class DiceGroup(DiceComputation):
         self.is_closed = is_closed
 
     def close(self) -> 'DiceGroup':
+        if self.is_closed:
+            return self
         return DiceGroup(self.dice, self.transformer, True)
 
     def kept(self) -> Iterable[DiceComputation]:
@@ -363,6 +396,8 @@ class DiceSum(DiceGroup):
         super().__init__(dice, transformer or IdentityTransformer(), is_closed)
 
     def close(self) -> 'DiceSum':
+        if self.is_closed:
+            return self
         return DiceSum(self.dice, self.transformer, True)
 
     def keep(self, selector: Selector) -> 'DiceSum':
@@ -481,6 +516,53 @@ class CountSelected:
                 yield 0 if not (new_value := self.override(die)) else new_value
 
 
+class TriangleCount(CountSelected):
+    def __init__(self, burnout: int) -> None:
+        selector = Threshold(Operator.EQ, 3)
+        selector.name = "3"
+        self._burnout = burnout
+        super().__init__(selector)
+
+    def override(self, die: DiceComputation) -> Optional[Number]:
+        if isinstance(die, DieRoll):
+            if die.value() == 3:
+                return 1
+            return 1j
+        return None
+
+    def __call__(self, dice: Iterable[DiceComputation]) -> Iterable[Number]:
+        kept_dice = self.selector(dice)
+        burnout = self._burnout
+        for die in dice:
+            success = die in kept_dice
+            if success and not burnout:
+                yield 1
+            elif success:
+                burnout -= 1
+                yield 1j
+            else:
+                yield 1j
+
+
+class TriangleSum(DiceSum):
+    TRISCENDENCE: Number = float("inf")
+
+    def __init__(self, dice: Iterable[DiceComputation], burnout: int):
+        self._burnout = burnout
+        super().__init__(dice, TriangleCount(burnout), is_closed=True)
+
+    def __repr__(self) -> str:
+        return f'TriangleSum(dice={self.dice!r})'
+
+    def value(self) -> Number:
+        if sum((1 if die.value() == 3 else 0) for die in self.dice) == 3:
+            return TriangleSum.TRISCENDENCE
+        result = sum(self.transformer(self.dice))
+        if result.real and (result.real % 3) == 0:
+            return result.real
+        return result
+
+
 class DiceRoller:
     def __init__(self, rng: Callable[[int], int]):
         self.rng = rng
@@ -493,22 +575,27 @@ class DiceRoller:
 
     def eval_summation(self, tokens: Iterable[Token]) -> DiceGroup:
         context: list[ParseNode] = []
+        new_node: ParseNode
         for token in tokens:
-            if token is Token.GROUP_START:
-                context.append(token)
-            elif token is Token.GROUP_END:
+            new_node = token
+            if token is Token.GROUP_END:
                 current_group: list[ParseNode] = []
                 while (last_token := context.pop()) is not Token.GROUP_START:
                     current_group.append(last_token)
-                context.append(self.evaluate_group(reversed(current_group)))
+                new_node = self.evaluate_group(reversed(current_group))
             elif isinstance(token, Dice):
-                context.append(self.evaluate_dice(token))
+                new_node = self.evaluate_dice(token)
+            elif isinstance(token, Triangle):
+                new_node = self.evaluate_triangle(token)
             elif isinstance(token, Combat):
-                context.append(self.evaluate_combat(token))
+                new_node = self.evaluate_combat(token)
             elif isinstance(token, PostfixOperator):
-                context.append(self.apply_postfix(context.pop(), token))
+                new_node = self.apply_postfix(context.pop(), token)
             elif isinstance(token, Constant):
-                context.append(Modifier(token.value))
+                new_node = Modifier(token.value)
+            if context and context[-1] == Token.SUB and isinstance(new_node, DiceComputation):
+                new_node = Negative(new_node)
+            context.append(new_node)
 
         return self.evaluate_group(context)
 
@@ -547,7 +634,7 @@ class DiceRoller:
                 result += self.evaluate_dice(node)
             elif isinstance(node, DiceComputation):
                 result += node
-            elif node is Token.ADD:
+            elif node in (Token.ADD, Token.SUB):
                 continue
             else:
                 raise DiceSyntaxError(f'Illegal token "{node}" in group')
@@ -561,6 +648,14 @@ class DiceRoller:
         rolls = repeat(6, dice.count)
         d6_rolls = map(self.roll, rolls)
         return DiceSum(map(CombatDieRoll.from_d6, d6_rolls))
+
+    def evaluate_triangle(self, dice: Triangle) -> TriangleSum:
+        rolls = repeat(4, dice.count)
+        d4_rolls = map(self.roll, rolls)
+        return TriangleSum(
+            map(TriangleDieRoll.from_d4, d4_rolls),
+            dice.burnout
+        )
 
 
 def random_roll(sides: int) -> int:

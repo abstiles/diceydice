@@ -1,6 +1,6 @@
 from typing import Optional
 
-from .evaluate import DiceComputation, DiceGroup, DiceRoller, DieRoll, evaluate
+from .evaluate import DiceComputation, DiceGroup, DiceRoller, DieRoll, Modifier, Negative, evaluate
 from .parser import tokenize
 
 # Leftwards double arrow symbol.
@@ -8,6 +8,12 @@ DOUBLE_ARROW = '\u21d0'
 
 # Left arrow symbol. (Reads better on my terminal.)
 ARROW = '\u2b05'
+
+# Triangle symbol.
+TRIANGLE = '\u25b2'
+INFINITY = '\u221e'
+
+inf = float("inf")
 
 
 class Formatter:
@@ -20,6 +26,9 @@ class Formatter:
     def arrow(self) -> str:
         return '<='
 
+    def num(self, n: int) -> str:
+        return str(int(n))
+
 
 class MarkdownFormatter(Formatter):
     def bold(self, text: object) -> str:
@@ -30,6 +39,13 @@ class MarkdownFormatter(Formatter):
 
     def arrow(self) -> str:
         return DOUBLE_ARROW
+
+    def num(self, n: int) -> str:
+        if n == inf:
+            return INFINITY
+        elif n == -inf:
+            return '-' + INFINITY
+        return str(int(n))
 
 
 class AnsiFormatter(Formatter):
@@ -42,6 +58,13 @@ class AnsiFormatter(Formatter):
     def arrow(self) -> str:
         # Gets an extra space because it's wide in a monospace setting.
         return ARROW + ' '
+
+    def num(self, n: int) -> str:
+        if n == inf:
+            return INFINITY
+        elif n == -inf:
+            return '-' + INFINITY
+        return str(int(n))
 
 
 PLAIN = Formatter()
@@ -67,7 +90,7 @@ def format_computation(roll: DiceGroup, fmt: Formatter) -> str:
 
 
 def format_result(roll: DiceGroup, fmt: Formatter) -> str:
-    result = str(roll.result) + (f'{{{roll.effects}}}' if roll.effects else '')
+    result = fmt.num(roll.result) + (f'{{{roll.effects}}}' if roll.effects else '')
     return fmt.bold(result)
 
 
@@ -87,21 +110,35 @@ def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> s
             return str(die)
         return str(die)
 
-    separator = ', ' if roll.transformer else ' + '
-    dice = []
+    def is_negative(die: DiceComputation) -> bool:
+        if isinstance(die, Negative):
+            return True
+        return int(die) < 0
+
+    str_unit = []
     for die, transformed_value in zip(roll.dice, roll.transformer(roll.dice)):
         roll_str = format_roll(die, fmt, inner=True)
 
+        if not str_unit:
+            pass
+        elif roll.transformer:
+            str_unit.append(', ')
+        elif is_negative(die):
+            str_unit.append(' - ')
+            roll_str = roll_str.lstrip('-')
+        else:
+            str_unit.append(' + ')
+
         is_selected = bool(roll.transformer) and _real_int(transformed_value)
         if is_selected and should_bold(die):
-            dice += [fmt.underline(fmt.bold(roll_str))]
+            str_unit += [fmt.underline(fmt.bold(roll_str))]
         elif is_selected:
-            dice += [fmt.underline(roll_str)]
+            str_unit += [fmt.underline(roll_str)]
         elif should_bold(die):
-            dice += [fmt.bold(roll_str)]
+            str_unit += [fmt.bold(roll_str)]
         else:
-            dice += [roll_str]
-    dice_str = separator.join(dice)
+            str_unit += [roll_str]
+    dice_str = ''.join(str_unit)
     if inner or roll.transformer:
         return f'{roll.transformer}({dice_str})'
     return dice_str
