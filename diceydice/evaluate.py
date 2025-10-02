@@ -565,11 +565,18 @@ class TriangleCount(CountSelected):
 class TriangleSum(DiceSum):
     TRISCENDENCE: Number = float('inf')
     class TriangleResult(Result):
+        CHECK = '\u2713'
+        X = '\u2716'
         TRIANGLE = '\u25b2'
+        # CHAOS = '\u233e'
+        CHAOS = '\U0001f300'  # Emoji
         def __str__(self) -> str:
             if self._value == TriangleSum.TRISCENDENCE:
                 return TriangleSum.TriangleResult.TRIANGLE * 3
-            return super().__str__()
+            return (
+                (self.CHECK if self._value.real else self.X)
+                + (' {:g}'.format(self._value.imag) + self.CHAOS if self._value.imag else '')
+            )
 
     def __init__(self, dice: Iterable[DiceComputation], burnout: int):
         self._burnout = burnout
