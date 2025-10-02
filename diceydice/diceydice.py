@@ -9,12 +9,6 @@ DOUBLE_ARROW = '\u21d0'
 # Left arrow symbol. (Reads better on my terminal.)
 ARROW = '\u2b05'
 
-# Triangle symbol.
-TRIANGLE = '\u25b2'
-INFINITY = '\u221e'
-
-inf = float("inf")
-
 
 class Formatter:
     def bold(self, text: object) -> str:
@@ -25,9 +19,6 @@ class Formatter:
 
     def arrow(self) -> str:
         return '<='
-
-    def num(self, n: int) -> str:
-        return str(int(n))
 
 
 class MarkdownFormatter(Formatter):
@@ -40,13 +31,6 @@ class MarkdownFormatter(Formatter):
     def arrow(self) -> str:
         return DOUBLE_ARROW
 
-    def num(self, n: int) -> str:
-        if n == inf:
-            return INFINITY
-        elif n == -inf:
-            return '-' + INFINITY
-        return str(int(n))
-
 
 class AnsiFormatter(Formatter):
     def bold(self, text: object) -> str:
@@ -58,13 +42,6 @@ class AnsiFormatter(Formatter):
     def arrow(self) -> str:
         # Gets an extra space because it's wide in a monospace setting.
         return ARROW + ' '
-
-    def num(self, n: int) -> str:
-        if n == inf:
-            return INFINITY
-        elif n == -inf:
-            return '-' + INFINITY
-        return str(int(n))
 
 
 PLAIN = Formatter()
@@ -90,8 +67,7 @@ def format_computation(roll: DiceGroup, fmt: Formatter) -> str:
 
 
 def format_result(roll: DiceGroup, fmt: Formatter) -> str:
-    result = fmt.num(roll.result) + (f'{{{roll.effects}}}' if roll.effects else '')
-    return fmt.bold(result)
+    return fmt.bold(roll.result)
 
 
 def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> str:

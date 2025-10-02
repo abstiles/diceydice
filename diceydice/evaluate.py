@@ -38,7 +38,8 @@ from .parser import (
 
 T = TypeVar('T')
 Comparator: TypeAlias = Callable[[object, object], bool]
-Number: TypeAlias = Union[int, float, complex]
+Scalar: TypeAlias = Union[int, float]
+Number: TypeAlias = Union[Scalar, complex]
 ParseNode: TypeAlias = Union[Token, 'DiceComputation']
 
 # U+1F4A5 is the "collision symbol" emoji.
@@ -48,6 +49,27 @@ EFFECT_SYMBOL = "\U0001f4a5"
 class DiceTransformer(Protocol):
     def __call__(self, dice: Iterable['DiceComputation']) -> Iterable[Number]: ...
     def __bool__(self) -> bool: ...
+
+
+class Result:
+    def __init__(self, value: Number):
+        self._value = value
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Result):
+            return self._value == other._value
+        return self._value == other
+
+    def __req__(self, other: object) -> bool:
+        return self == other
+
+    def __str__(self) -> str:
+        try:
+            return '{:g}'.format(self._value.real) + (
+                '{{{:g}}}'.format(self._value.imag) if self._value.imag else ''
+            )
+        except AttributeError:
+            return str(self._value)
 
 
 class Selector:
@@ -127,7 +149,7 @@ class Threshold(Selector):
 
     def __call__(self, rolls: Iterable['DiceComputation']) -> list['DiceComputation']:
         def test(roll: DiceComputation) -> bool:
-            return self.oper(roll.result, self.count)
+            return self.oper(roll.total, self.count)
         return list(filter(test, rolls))
 
 
@@ -136,8 +158,12 @@ class DiceComputation:
         return 0
 
     @property
-    def result(self) -> int:
-        return self.value().real
+    def result(self) -> Result:
+        return Result(self.value())
+
+    @property
+    def total(self) -> int:
+        return int(self.value().real)
 
     @property
     def effects(self) -> int:
@@ -175,19 +201,19 @@ class DiceComputation:
 
 
 class DieRoll(DiceComputation):
-    def __init__(self, sides: int, result: int):
+    def __init__(self, sides: int, total: int):
         self.sides = sides
-        self._result = result
+        self._total = total
 
     @property
     def is_crit(self) -> bool:
-        return self._result in (1, self.sides)
+        return self._total in (1, self.sides)
 
     def value(self) -> Number:
-        return self._result
+        return self._total
 
     def __repr__(self) -> str:
-        return f'DieRoll(sides={self.sides}, result={self.result})'
+        return f'DieRoll(sides={self.sides}, total={self.total})'
 
     def __add__(self, other: object) -> int:
         if not isinstance(other, SupportsInt):
@@ -200,53 +226,53 @@ class DieRoll(DiceComputation):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DieRoll):
             return False
-        return (self.sides, self.result) == (other.sides, other.result)
+        return (self.sides, self.total) == (other.sides, other.total)
 
 
 class TriangleDieRoll(DieRoll):
-    def __init__(self, result: int):
+    def __init__(self, total: int):
         self.sides = 4
-        self._result = result
+        self._total = total
 
     @property
     def is_crit(self) -> bool:
-        return self._result == 3
+        return self._total == 3
 
     def value(self) -> Number:
-        return self._result
+        return self._total
 
     def __repr__(self) -> str:
-        return f'TriangleDieRoll(result={self._result})'
+        return f'TriangleDieRoll(total={self._total})'
 
     @classmethod
     def from_d4(cls, roll: DieRoll) -> 'TriangleDieRoll':
         if roll.sides != 4:
             raise ValueError("Can't create triangle die from non-d4")
-        return TriangleDieRoll(roll.result)
+        return TriangleDieRoll(roll.total)
 
 
 class CombatDieRoll(DiceComputation):
-    def __init__(self, result: int, effect: bool = False):
-        self._result = result
+    def __init__(self, total: int, effect: bool = False):
+        self._total = total
         self.effect = effect
 
     def value(self) -> complex:
-        return self._result + (1j if self.effect else 0)
+        return self._total + (1j if self.effect else 0)
 
     def __str__(self) -> str:
-        return EFFECT_SYMBOL if self.effect else str(self.result)
+        return EFFECT_SYMBOL if self.effect else str(self.total)
 
     def __repr__(self) -> str:
-        return f'CombatDieRoll(result={self.result}, effect={self.effect})'
+        return f'CombatDieRoll(total={self.total}, effect={self.effect})'
 
     @classmethod
     def from_d6(cls, roll: DieRoll) -> 'CombatDieRoll':
         if roll.sides != 6:
             raise ValueError("Can't create combat die from non-d6")
         return (
-            CombatDieRoll(1) if roll.result == 1
-            else CombatDieRoll(2) if roll.result == 2
-            else CombatDieRoll(0) if roll.result in (3, 4)
+            CombatDieRoll(1) if roll.total == 1
+            else CombatDieRoll(2) if roll.total == 2
+            else CombatDieRoll(0) if roll.total in (3, 4)
             else CombatDieRoll(1, effect=True)
         )
 
@@ -523,13 +549,6 @@ class TriangleCount(CountSelected):
         self._burnout = burnout
         super().__init__(selector)
 
-    def override(self, die: DiceComputation) -> Optional[Number]:
-        if isinstance(die, DieRoll):
-            if die.value() == 3:
-                return 1
-            return 1j
-        return None
-
     def __call__(self, dice: Iterable[DiceComputation]) -> Iterable[Number]:
         kept_dice = self.selector(dice)
         burnout = self._burnout
@@ -537,15 +556,20 @@ class TriangleCount(CountSelected):
             success = die in kept_dice
             if success and not burnout:
                 yield 1
-            elif success:
+                continue
+            if success:
                 burnout -= 1
-                yield 1j
-            else:
-                yield 1j
+            yield 1j
 
 
 class TriangleSum(DiceSum):
-    TRISCENDENCE: Number = float("inf")
+    TRISCENDENCE: Number = float('inf')
+    class TriangleResult(Result):
+        TRIANGLE = '\u25b2'
+        def __str__(self) -> str:
+            if self._value == TriangleSum.TRISCENDENCE:
+                return TriangleSum.TriangleResult.TRIANGLE * 3
+            return super().__str__()
 
     def __init__(self, dice: Iterable[DiceComputation], burnout: int):
         self._burnout = burnout
@@ -554,13 +578,17 @@ class TriangleSum(DiceSum):
     def __repr__(self) -> str:
         return f'TriangleSum(dice={self.dice!r})'
 
+    @property
+    def result(self) -> TriangleResult:
+        return TriangleSum.TriangleResult(self.value())
+
     def value(self) -> Number:
         if sum((1 if die.value() == 3 else 0) for die in self.dice) == 3:
             return TriangleSum.TRISCENDENCE
-        result = sum(self.transformer(self.dice))
-        if result.real and (result.real % 3) == 0:
-            return result.real
-        return result
+        total = sum(self.transformer(self.dice))
+        if total.real and (total.real % 3) == 0:
+            return total.real
+        return total
 
 
 class DiceRoller:
@@ -568,7 +596,7 @@ class DiceRoller:
         self.rng = rng
 
     def roll(self, sides: int) -> DieRoll:
-        return DieRoll(sides=sides, result=self.rng(sides))
+        return DieRoll(sides=sides, total=self.rng(sides))
 
     def evaluate(self, tokens: Iterable[Token]) -> DiceGroup:
         return self.eval_summation(tokens)

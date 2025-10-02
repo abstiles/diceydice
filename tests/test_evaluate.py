@@ -1,6 +1,8 @@
+from itertools import cycle
+
 import pytest
 
-from diceydice.evaluate import CombatDieRoll, DiceSum, DiceRoller, DieRoll
+from diceydice.evaluate import CombatDieRoll, DiceSum, DiceRoller, DieRoll, Result, TriangleSum
 from diceydice.parser import Dice, tokenize
 
 
@@ -8,6 +10,14 @@ def roller():
     # Always rolls the highest value.
     def predictable_rng(sides):
         return sides
+    return DiceRoller(predictable_rng)
+
+
+def seq_roller(iterable):
+    iterator = iter(cycle(iterable))
+    # Always rolls the highest value.
+    def predictable_rng(sides):
+        return next(iterator)
     return DiceRoller(predictable_rng)
 
 
@@ -83,6 +93,9 @@ def dice_result(request):
         ('3d20 - 42', 18),
         ('(1d6 + 10) + 2', 18),
         ('(1d9 + (1d8 + 2))h', 10),
+
+        # Triangle agency
+        ('tri', 6j),
     ],
     indirect=['dice_result'],
 )
@@ -148,7 +161,7 @@ def test_dice_sum_combat_dice():
         CombatDieRoll(2), CombatDieRoll(1, True),
         CombatDieRoll(0), CombatDieRoll(1, True),
     ])
-    assert total.result == 4
+    assert total.total == 4
     assert total.effects == 2
 
 
@@ -157,7 +170,7 @@ def test_dice_sum_threshold():
         DieRoll(20, 5), DieRoll(20, 15), DieRoll(20, 10), DieRoll(20, 20),
         DieRoll(20, 1),
     ]).le(10)
-    assert total.result == 3
+    assert total.result == Result(3)
 
 
 def test_dice_sum_threshold_with_crits():
@@ -165,4 +178,26 @@ def test_dice_sum_threshold_with_crits():
         DieRoll(20, 5), DieRoll(20, 15), DieRoll(20, 10), DieRoll(20, 20),
         DieRoll(20, 1),
     ]).crit_le(10)
-    assert (total.result, total.effects) == (4, 1)
+    assert (total.total, total.effects) == (4, 1)
+
+
+@pytest.mark.parametrize(
+    'expression,rolls,expected',
+    [
+        ('tri', [1, 2, 3, 1, 2, 3], 2 + 4j),
+        ('tri', [1, 1, 1, 1, 1, 1], 6j),
+        ('tri', [3, 3, 3, 1, 2, 4], TriangleSum.TRISCENDENCE),
+        ('tri', [3, 3, 3, 3, 3, 3], 6),
+        ('tri@1', [3, 3, 2, 4, 1, 2], 1 + 5j),
+        # Triscendence always applies, even with burnout.
+        ('tri@1', [3, 3, 3, 1, 2, 4], TriangleSum.TRISCENDENCE),
+        # Burnout reducing total to 3 still avoids chaos, but isn't triscendent.
+        ('tri@1', [3, 3, 3, 3, 1, 2], 3),
+        ('tri@1', [1, 2, 3, 4, 1, 2], 6j),
+        ('tri@1', [1, 2, 4, 1, 2, 4], 6j),
+    ],
+    indirect=['expression'],
+)
+def test_triangle_agency(expression, rolls, expected):
+    result = seq_roller(rolls).evaluate(expression)
+    assert result.value() == expected
