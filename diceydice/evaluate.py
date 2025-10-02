@@ -566,10 +566,9 @@ class TriangleSum(DiceSum):
     TRISCENDENCE: Number = float('inf')
     class TriangleResult(Result):
         CHECK = '\u2713'
-        X = '\u2716'
+        X = '\u2717'
         TRIANGLE = '\u25b2'
-        # CHAOS = '\u233e'
-        CHAOS = '\U0001f300'  # Emoji
+        CHAOS = '\u233e'
         def __str__(self) -> str:
             if self._value == TriangleSum.TRISCENDENCE:
                 return TriangleSum.TriangleResult.TRIANGLE * 3
