@@ -44,6 +44,7 @@ ParseNode: TypeAlias = Union[Token, 'DiceComputation']
 
 # U+1F4A5 is the "collision symbol" emoji.
 EFFECT_SYMBOL = "\U0001f4a5"
+TRIANGLE_SYMBOL = '\u25b2'
 
 
 class DiceTransformer(Protocol):
@@ -545,7 +546,7 @@ class CountSelected:
 class TriangleCount(CountSelected):
     def __init__(self, burnout: int) -> None:
         selector = Threshold(Operator.EQ, 3)
-        selector.name = "3"
+        selector.name = TRIANGLE_SYMBOL
         self._burnout = burnout
         super().__init__(selector)
 
@@ -567,11 +568,10 @@ class TriangleSum(DiceSum):
     class TriangleResult(Result):
         CHECK = '\u2713'
         X = '\u2717'
-        TRIANGLE = '\u25b2'
         CHAOS = '\u233e'
         def __str__(self) -> str:
             if self._value == TriangleSum.TRISCENDENCE:
-                return TriangleSum.TriangleResult.TRIANGLE * 3
+                return TRIANGLE_SYMBOL * 3
             return (
                 (self.CHECK if self._value.real else self.X)
                 + (' {:g}'.format(self._value.imag) + self.CHAOS if self._value.imag else '')

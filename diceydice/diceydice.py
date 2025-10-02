@@ -1,6 +1,9 @@
 from typing import Optional
 
-from .evaluate import DiceComputation, DiceGroup, DiceRoller, DieRoll, Modifier, Negative, evaluate
+from .evaluate import (
+    DiceComputation, DiceGroup, DiceRoller, DieRoll, Modifier, Negative,
+    TRIANGLE_SYMBOL, evaluate
+)
 from .parser import tokenize
 
 # Leftwards double arrow symbol.
@@ -20,6 +23,9 @@ class Formatter:
     def arrow(self) -> str:
         return '<='
 
+    def str(self, text: object) -> str:
+        return str(text)
+
 
 class MarkdownFormatter(Formatter):
     def bold(self, text: object) -> str:
@@ -33,11 +39,18 @@ class MarkdownFormatter(Formatter):
 
 
 class AnsiFormatter(Formatter):
+    @staticmethod
+    def _tweak_monospace(text: str) -> str:
+        return text.replace(TRIANGLE_SYMBOL + '(', TRIANGLE_SYMBOL + ' (')
+
+    def str(self, text: object) -> str:
+        return self._tweak_monospace(super().str(text))
+
     def bold(self, text: object) -> str:
-        return f"\033[1m{text}\033[22m"
+        return f"\033[1m{self.str(text)}\033[22m"
 
     def underline(self, text: object) -> str:
-        return f"\033[4m{text}\033[24m"
+        return f"\033[4m{self.str(text)}\033[24m"
 
     def arrow(self) -> str:
         # Gets an extra space because it's wide in a monospace setting.
@@ -72,7 +85,7 @@ def format_result(roll: DiceGroup, fmt: Formatter) -> str:
 
 def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> str:
     if not isinstance(roll, DiceGroup) or len(roll) <= 1:
-        return str(roll)
+        return fmt.str(roll)
 
     def should_bold(die: DiceComputation) -> bool:
         if isinstance(die, DieRoll):
@@ -81,10 +94,10 @@ def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> s
 
     def format_die(die: DiceComputation) -> str:
         if isinstance(die, DiceGroup) and len(die) > 1:
-            if not str(die).endswith(')'):
+            if not fmt.str(die).endswith(')'):
                 return f'({die})'
-            return str(die)
-        return str(die)
+            return fmt.str(die)
+        return fmt.str(die)
 
     def is_negative(die: DiceComputation) -> bool:
         if isinstance(die, Negative):
@@ -116,7 +129,7 @@ def format_roll(roll: DiceComputation, fmt: Formatter, inner: bool = False) -> s
             str_unit += [roll_str]
     dice_str = ''.join(str_unit)
     if inner or roll.transformer:
-        return f'{roll.transformer}({dice_str})'
+        return fmt.str(f'{roll.transformer}({dice_str})')
     return dice_str
 
 
