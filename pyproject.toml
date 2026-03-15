@@ -1,3 +1,28 @@
 [build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta:__legacy__"
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diceydice"
+version = "0.2.0"
+description = "Fancy dice roller"
+requires-python = ">=3.10"
+authors = [
+    { name = "Anjou Stiles" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/abstiles/diceydice"
+"Bug Tracker" = "https://github.com/abstiles/dicedice/issues"
+
+[mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+warn_unreachable = true
+disallow_any_expr = true
