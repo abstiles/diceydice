@@ -624,7 +624,7 @@ class DiceRoller:
             elif isinstance(token, Combat):
                 new_node = self.evaluate_combat(token)
             elif isinstance(token, PostfixOperator):
-                new_node = self.apply_postfix(context.pop(), token)
+                new_node = self.apply_postfix(context.pop(), token).close()
             elif isinstance(token, Constant):
                 new_node = Modifier(token.value)
             if context and context[-1] == Token.SUB and isinstance(new_node, DiceComputation):

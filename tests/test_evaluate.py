@@ -40,6 +40,25 @@ def test_evaluate_dice(dice, expected_len):
     assert len(result) == expected_len
 
 
+@pytest.mark.parametrize(
+    'expression,expected_len',
+    [
+        ('1d6', 1),
+        ('2d20', 2),
+        ('3d4', 3),
+        ('(2d6)', 2),
+        ('1d20 + (1d2 + 1d4 + 1d6)h', 2),
+        ('2d20h + (1d2 + 1d4 + 1d6)h', 2),
+        ('2d20h + 2d6', 3),
+        ('2d20h + (2d6)', 2),
+    ],
+    indirect=['expression'],
+)
+def test_eval_summation(expression, expected_len):
+    result = roller().eval_summation(expression)
+    assert len(result) == expected_len
+
+
 @pytest.fixture
 def expression(request):
     return tokenize(request.param)
@@ -87,6 +106,8 @@ def dice_result(request):
         ('1d20 + (1d2 + 1d4 + 2d6)kh1', 26),
         ('1d20 + (1d2 + (2d6))kh1', 32),
         ('1d20 + (1d2 + 1d4 + (2d6))kh1', 32),
+        ('2d20h + 2d6', 32),
+        ('2d20h + (2d6)', 32),
 
         # Constant modifiers
         ('2d20 + 2', 42),
@@ -123,7 +144,8 @@ def test_dice_result():
     )
     expected = DiceSum(
         [
-            DiceSum([DieRoll(20, 20), DieRoll(20, 20)]),
+            DieRoll(20, 20),
+            DieRoll(20, 20),
             DiceSum([DieRoll(2, 2), DieRoll(4, 4)]).highest(),
         ]
     )
